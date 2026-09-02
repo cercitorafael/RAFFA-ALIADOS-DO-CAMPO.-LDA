@@ -1,0 +1,8 @@
+{
+  "name": "Remix Raffa Aliados do Campo",
+  "description": "Website oficial da Raffa Aliados do Campo - Sementes certificadas, fertilizantes, agroquímicos e equipamentos agrícolas em Ribaué, Nampula.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
