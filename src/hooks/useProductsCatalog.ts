@@ -15,7 +15,11 @@ import {
 import { 
   syncProductsToCloud, 
   fetchProductsFromCloud, 
-  deleteProductFromCloud 
+  deleteProductFromCloud,
+  upsertSingleProductToCloud,
+  formatSupabaseRowToProduct,
+  supabase,
+  isSupabaseConfigured
 } from '../lib/supabase';
 
 export function useProductsCatalog() {
@@ -51,6 +55,8 @@ export function useProductsCatalog() {
   });
 
   const [isLoaded, setIsLoaded] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const isFirstRender = useRef(true);
 
   // Load from IndexedDB on startup (dual-vault resolution)
@@ -68,6 +74,106 @@ export function useProductsCatalog() {
 
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  // Automatic Cloud Sync with Supabase on startup & Realtime Subscription
+  useEffect(() => {
+    let isMounted = true;
+
+    async function autoSynchronizeWithSupabase() {
+      if (!isSupabaseConfigured) return;
+
+      try {
+        setSyncStatus('syncing');
+        const cloudProducts = await fetchProductsFromCloud();
+        if (!isMounted) return;
+
+        if (cloudProducts && cloudProducts.length > 0) {
+          // Cloud has catalog: automatically apply and update local storage
+          console.log(`[Supabase Auto-Sync] Sincronização automática: ${cloudProducts.length} produtos carregados da nuvem.`);
+          setProducts(cloudProducts);
+          saveProductsToStorage(cloudProducts);
+          setSyncStatus('synced');
+          setLastSyncedAt(new Date());
+        } else if (cloudProducts && cloudProducts.length === 0) {
+          // Cloud table is currently empty: automatically seed it with local catalog
+          console.log('[Supabase Auto-Sync] Tabela da nuvem vazia: a semear catálogo inicial no Supabase...');
+          const currentCatalog = products;
+          if (currentCatalog.length > 0) {
+            const res = await syncProductsToCloud(currentCatalog);
+            if (!isMounted) return;
+            if (res.success) {
+              setSyncStatus('synced');
+              setLastSyncedAt(new Date());
+              console.log(`[Supabase Auto-Sync] Catálogo inicial de ${res.count} produtos sincronizado com sucesso.`);
+            } else {
+              setSyncStatus('idle');
+            }
+          } else {
+            setSyncStatus('synced');
+          }
+        } else {
+          setSyncStatus('idle');
+        }
+      } catch (err) {
+        console.warn('[Supabase Auto-Sync] Erro na sincronização inicial:', err);
+        if (isMounted) setSyncStatus('error');
+      }
+    }
+
+    autoSynchronizeWithSupabase();
+
+    // Supabase Realtime channel subscription for instant multi-user / multi-tab synchronization
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel('realtime_products_catalog')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'products' },
+          (payload: any) => {
+            console.log('[Supabase Realtime] Alteração detetada na nuvem:', payload.eventType);
+            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+              const cloudItem = formatSupabaseRowToProduct(payload.new);
+              setProducts((prev) => {
+                const index = prev.findIndex(p => p.id === cloudItem.id);
+                let next: ProductItem[];
+                if (index >= 0) {
+                  next = [...prev];
+                  next[index] = cloudItem;
+                } else {
+                  next = [cloudItem, ...prev];
+                }
+                saveProductsToStorage(next);
+                return next;
+              });
+              setLastSyncedAt(new Date());
+              setSyncStatus('synced');
+            } else if (payload.eventType === 'DELETE') {
+              const deletedId = (payload.old as any)?.id;
+              if (deletedId) {
+                setProducts((prev) => {
+                  const next = prev.filter(p => p.id !== deletedId);
+                  saveProductsToStorage(next);
+                  return next;
+                });
+                setLastSyncedAt(new Date());
+                setSyncStatus('synced');
+              }
+            }
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn('[Supabase Realtime] Falha ao registar subscrição em tempo real:', e);
+    }
+
+    return () => {
+      isMounted = false;
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, []);
 
@@ -116,7 +222,7 @@ export function useProductsCatalog() {
     saveProductsToStorage(products);
   }, [products]);
 
-  // CRUD Actions
+  // CRUD Actions with Automatic Cloud Sync
   const addProduct = useCallback((newProduct: Omit<ProductItem, 'id'> & { id?: string }) => {
     const id = newProduct.id || `prod-custom-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
     const productWithId: ProductItem = {
@@ -136,6 +242,16 @@ export function useProductsCatalog() {
       saveProductsToStorage(updated);
       return updated;
     });
+
+    // 3. Automatically sync single product to Supabase cloud in background
+    upsertSingleProductToCloud(productWithId)
+      .then((ok) => {
+        if (ok) {
+          setSyncStatus('synced');
+          setLastSyncedAt(new Date());
+        }
+      })
+      .catch((err) => console.warn('[Supabase] Background add failed:', err));
 
     return productWithId;
   }, []);
@@ -161,6 +277,15 @@ export function useProductsCatalog() {
 
       if (updatedProduct) {
         saveUserProductToVault(updatedProduct);
+        // Automatically sync single updated product to Supabase cloud in background
+        upsertSingleProductToCloud(updatedProduct)
+          .then((ok) => {
+            if (ok) {
+              setSyncStatus('synced');
+              setLastSyncedAt(new Date());
+            }
+          })
+          .catch((err) => console.warn('[Supabase] Background update failed:', err));
       }
       saveProductsToStorage(updated);
       return updated;
@@ -171,7 +296,13 @@ export function useProductsCatalog() {
   const deleteProduct = useCallback(async (id: string) => {
     await deleteProductPermanently(id);
     // Asynchronously delete from Supabase cloud without blocking local UI
-    deleteProductFromCloud(id).catch(err => console.warn('[Supabase] Background delete failed:', err));
+    deleteProductFromCloud(id)
+      .then(() => {
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date());
+      })
+      .catch((err) => console.warn('[Supabase] Background delete failed:', err));
+
     setProducts((prev) => {
       const updated = prev.filter((item) => item.id !== id);
       saveProductsToStorage(updated);
@@ -189,6 +320,8 @@ export function useProductsCatalog() {
     });
     setProducts([]);
     saveProductsToStorage([]);
+    setSyncStatus('synced');
+    setLastSyncedAt(new Date());
   }, [products]);
 
   // Delete multiple selected products in their totality
@@ -203,6 +336,8 @@ export function useProductsCatalog() {
       saveProductsToStorage(updated);
       return updated;
     });
+    setSyncStatus('synced');
+    setLastSyncedAt(new Date());
   }, []);
 
   const duplicateProduct = useCallback((id: string) => {
@@ -224,11 +359,23 @@ export function useProductsCatalog() {
       saveProductsToStorage(updated);
       return updated;
     });
+
+    // Automatically sync duplicated product to Supabase cloud
+    upsertSingleProductToCloud(duplicated)
+      .then((ok) => {
+        if (ok) {
+          setSyncStatus('synced');
+          setLastSyncedAt(new Date());
+        }
+      })
+      .catch((err) => console.warn('[Supabase] Background duplicate sync failed:', err));
+
     return duplicated;
   }, [products]);
 
   const resetToDefault = useCallback((preserveUserCreated = true) => {
     clearDeletedIds();
+    let merged: ProductItem[];
     if (preserveUserCreated) {
       // Keep all user-created products safely, only restore factory products
       const userVault = loadUserVaultFromLocalStorage();
@@ -236,14 +383,25 @@ export function useProductsCatalog() {
       userVault.forEach(item => userItemsMap.set(item.id, item));
       
       // Merge PRODUCTS_DATA with preserved user items
-      const merged = [...userVault, ...PRODUCTS_DATA.filter(p => !userItemsMap.has(p.id))];
+      merged = [...userVault, ...PRODUCTS_DATA.filter(p => !userItemsMap.has(p.id))];
       setProducts(merged);
       saveProductsToStorage(merged);
     } else {
       // Complete wipe only if explicitly chosen
+      merged = PRODUCTS_DATA;
       setProducts(PRODUCTS_DATA);
       saveProductsToStorage(PRODUCTS_DATA);
     }
+
+    // Automatically sync restored catalog to Supabase
+    syncProductsToCloud(merged)
+      .then((res) => {
+        if (res.success) {
+          setSyncStatus('synced');
+          setLastSyncedAt(new Date());
+        }
+      })
+      .catch((err) => console.warn('[Supabase] Auto sync on reset failed:', err));
   }, []);
 
   const importCatalog = useCallback((importedProducts: ProductItem[]) => {
@@ -252,6 +410,16 @@ export function useProductsCatalog() {
     }
     setProducts(importedProducts);
     saveProductsToStorage(importedProducts);
+
+    // Automatically sync imported catalog to Supabase
+    syncProductsToCloud(importedProducts)
+      .then((res) => {
+        if (res.success) {
+          setSyncStatus('synced');
+          setLastSyncedAt(new Date());
+        }
+      })
+      .catch((err) => console.warn('[Supabase] Auto sync on import failed:', err));
   }, []);
 
   const exportCatalogJSON = useCallback(() => {
@@ -268,23 +436,37 @@ export function useProductsCatalog() {
 
   // Push current catalog to Supabase cloud
   const syncWithCloud = useCallback(async () => {
-    return await syncProductsToCloud(products);
+    setSyncStatus('syncing');
+    const res = await syncProductsToCloud(products);
+    if (res.success) {
+      setSyncStatus('synced');
+      setLastSyncedAt(new Date());
+    } else {
+      setSyncStatus('error');
+    }
+    return res;
   }, [products]);
 
   // Pull products stored in Supabase cloud and update local catalog
   const pullFromCloud = useCallback(async () => {
+    setSyncStatus('syncing');
     const cloudProducts = await fetchProductsFromCloud();
     if (cloudProducts && cloudProducts.length > 0) {
       setProducts(cloudProducts);
       saveProductsToStorage(cloudProducts);
+      setSyncStatus('synced');
+      setLastSyncedAt(new Date());
       return { success: true, count: cloudProducts.length };
     }
+    setSyncStatus('idle');
     return { success: false, count: 0 };
   }, []);
 
   return {
     products,
     isLoaded,
+    syncStatus,
+    lastSyncedAt,
     addProduct,
     updateProduct,
     deleteProduct,

@@ -24,6 +24,8 @@ export default function App() {
   // CRUD Catalog State & Hook
   const {
     products,
+    syncStatus,
+    lastSyncedAt,
     addProduct,
     updateProduct,
     deleteProduct,
@@ -223,6 +225,8 @@ export default function App() {
         onExportJSON={exportCatalogJSON}
         onSyncCloud={syncWithCloud}
         onPullCloud={pullFromCloud}
+        syncStatus={syncStatus}
+        lastSyncedAt={lastSyncedAt}
       />
 
       {/* CRUD Create/Edit Product Modal */}

@@ -78,6 +78,51 @@ export async function checkSupabaseConnection(): Promise<{
 }
 
 /**
+ * Convert a ProductItem into a Supabase database row format
+ */
+export function formatProductForSupabase(p: ProductItem) {
+  return {
+    id: p.id,
+    name: p.name,
+    category: p.category,
+    sub_category: p.subCategory || null,
+    category_label: p.categoryLabel,
+    tagline: p.tagline || '',
+    description: p.description || '',
+    varieties: p.varieties || [],
+    specs: p.specs || {},
+    image: p.image,
+    badge: p.badge || null,
+    popular: Boolean(p.popular),
+    is_user_created: Boolean(p.isUserCreated),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Convert a Supabase database row into a ProductItem
+ */
+export function formatSupabaseRowToProduct(row: any): ProductItem {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    subCategory: row.sub_category || row.subCategory,
+    categoryLabel: row.category_label || row.categoryLabel,
+    tagline: row.tagline || '',
+    description: row.description || '',
+    varieties: Array.isArray(row.varieties) ? row.varieties : (row.varieties ? JSON.parse(row.varieties) : []),
+    specs: typeof row.specs === 'object' ? row.specs : (row.specs ? JSON.parse(row.specs) : undefined),
+    image: row.image,
+    badge: row.badge,
+    popular: row.popular,
+    isUserCreated: row.is_user_created ?? row.isUserCreated,
+    createdAt: row.created_at ? new Date(row.created_at).getTime() : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : undefined,
+  };
+}
+
+/**
  * Fetch all products from Supabase 'products' table
  */
 export async function fetchProductsFromCloud(): Promise<ProductItem[] | null> {
@@ -95,23 +140,7 @@ export async function fetchProductsFromCloud(): Promise<ProductItem[] | null> {
     }
 
     if (data && Array.isArray(data) && data.length > 0) {
-      return data.map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        category: row.category,
-        subCategory: row.sub_category || row.subCategory,
-        categoryLabel: row.category_label || row.categoryLabel,
-        tagline: row.tagline || '',
-        description: row.description || '',
-        varieties: Array.isArray(row.varieties) ? row.varieties : (row.varieties ? JSON.parse(row.varieties) : []),
-        specs: typeof row.specs === 'object' ? row.specs : (row.specs ? JSON.parse(row.specs) : undefined),
-        image: row.image,
-        badge: row.badge,
-        popular: row.popular,
-        isUserCreated: row.is_user_created ?? row.isUserCreated,
-        createdAt: row.created_at ? new Date(row.created_at).getTime() : undefined,
-        updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : undefined,
-      }));
+      return data.map((row: any) => formatSupabaseRowToProduct(row));
     }
 
     return [];
@@ -134,22 +163,7 @@ export async function syncProductsToCloud(products: ProductItem[]): Promise<{
   }
 
   try {
-    const formatted = products.map((p) => ({
-      id: p.id,
-      name: p.name,
-      category: p.category,
-      sub_category: p.subCategory || null,
-      category_label: p.categoryLabel,
-      tagline: p.tagline,
-      description: p.description,
-      varieties: p.varieties || [],
-      specs: p.specs || {},
-      image: p.image,
-      badge: p.badge || null,
-      popular: Boolean(p.popular),
-      is_user_created: Boolean(p.isUserCreated),
-      updated_at: new Date().toISOString(),
-    }));
+    const formatted = products.map(formatProductForSupabase);
 
     const { error } = await supabase
       .from('products')
@@ -164,6 +178,29 @@ export async function syncProductsToCloud(products: ProductItem[]): Promise<{
   } catch (err: any) {
     console.error('[Supabase] Upsert error:', err);
     return { success: false, count: 0, error: err?.message || 'Erro inesperado' };
+  }
+}
+
+/**
+ * Upsert a single product to Supabase cloud automatically
+ */
+export async function upsertSingleProductToCloud(product: ProductItem): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  try {
+    const formatted = formatProductForSupabase(product);
+    const { error } = await supabase
+      .from('products')
+      .upsert([formatted], { onConflict: 'id' });
+
+    if (error) {
+      console.warn('[Supabase] Error upserting single product:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase] Upsert single product error:', err);
+    return false;
   }
 }
 

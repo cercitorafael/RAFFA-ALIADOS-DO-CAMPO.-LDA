@@ -45,6 +45,8 @@ interface AdminCatalogModalProps {
   onExportJSON: () => void;
   onSyncCloud?: () => Promise<{ success: boolean; count: number; error?: string }>;
   onPullCloud?: () => Promise<{ success: boolean; count: number }>;
+  syncStatus?: 'idle' | 'syncing' | 'synced' | 'error';
+  lastSyncedAt?: Date | null;
 }
 
 export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
@@ -62,6 +64,8 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   onExportJSON,
   onSyncCloud,
   onPullCloud,
+  syncStatus = 'idle',
+  lastSyncedAt,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
@@ -432,26 +436,39 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
             {/* Supabase Cloud Sync & Connection Bar */}
             <div className="bg-emerald-950/5 border border-emerald-700/20 rounded-xl p-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-emerald-700/10 text-emerald-800 flex items-center justify-center font-bold">
+                <div className="w-7 h-7 rounded-lg bg-emerald-700/10 text-emerald-800 flex items-center justify-center font-bold shrink-0">
                   <Database className="w-4 h-4 text-emerald-700" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center flex-wrap gap-2">
                     <span className="font-extrabold text-stone-900 flex items-center gap-1.5">
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
                       </span>
-                      Supabase Cloud Ativo
+                      Sincronização Automática com Supabase
                     </span>
-                    <span className="font-mono text-[11px] text-stone-500 bg-white px-2 py-0.5 rounded border border-stone-200">
+                    <span className="font-mono text-[10px] text-stone-500 bg-white px-2 py-0.5 rounded border border-stone-200">
                       {SUPABASE_PROJECT_INFO.host}
                     </span>
+                    {syncStatus === 'syncing' && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        A sincronizar alterações...
+                      </span>
+                    )}
+                    {syncStatus === 'synced' && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        ✓ 100% Sincronizado
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-stone-500 mt-0.5">
                     {cloudStatus?.message 
                       ? cloudStatus.message 
-                      : 'Base de dados PostgreSQL na nuvem pronta para sincronização e backup seguro.'}
+                      : (lastSyncedAt 
+                          ? `Qualquer produto adicionado, editado ou eliminado sincroniza em tempo real. Última sincronização: ${lastSyncedAt.toLocaleTimeString('pt-PT')}.`
+                          : 'Todas as alterações no catálogo são salvas e sincronizadas automaticamente em tempo real.')}
                   </p>
                 </div>
               </div>
