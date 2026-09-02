@@ -18,10 +18,17 @@ import {
   ShieldCheck,
   HardDrive,
   CheckSquare,
-  Square
+  Square,
+  Cloud,
+  CloudUpload,
+  CloudDownload,
+  Database,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { ProductItem } from '../types';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
+import { checkSupabaseConnection, SUPABASE_PROJECT_INFO } from '../lib/supabase';
 
 interface AdminCatalogModalProps {
   isOpen: boolean;
@@ -36,6 +43,8 @@ interface AdminCatalogModalProps {
   onResetToDefault: (preserveUserCreated?: boolean) => void;
   onImportJSON: (imported: ProductItem[]) => void;
   onExportJSON: () => void;
+  onSyncCloud?: () => Promise<{ success: boolean; count: number; error?: string }>;
+  onPullCloud?: () => Promise<{ success: boolean; count: number }>;
 }
 
 export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
@@ -51,6 +60,8 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   onResetToDefault,
   onImportJSON,
   onExportJSON,
+  onSyncCloud,
+  onPullCloud,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
@@ -60,6 +71,15 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   const [isDeleteSelectedModalOpen, setIsDeleteSelectedModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
+  // Supabase Cloud State
+  const [isTestingCloud, setIsTestingCloud] = useState(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<{
+    connected?: boolean;
+    latency?: number;
+    message?: string;
+  } | null>(null);
   
   const fileImportRef = useRef<HTMLInputElement>(null);
 
@@ -114,6 +134,64 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
       showNotification('Catálogo padrão restaurado! As suas sementes personalizadas foram preservadas.');
     } else {
       showNotification('Catálogo restaurado para as configurações originais de fábrica.');
+    }
+  };
+
+  const handleTestSupabase = async () => {
+    setIsTestingCloud(true);
+    setCloudStatus(null);
+    try {
+      const res = await checkSupabaseConnection();
+      setCloudStatus({
+        connected: res.connected,
+        latency: res.latencyMs,
+        message: res.message,
+      });
+      showNotification(res.connected 
+        ? `Supabase Conectado! Latência: ${res.latencyMs || 0}ms` 
+        : `Erro ao ligar ao Supabase: ${res.message}`);
+    } catch (e: any) {
+      setCloudStatus({
+        connected: false,
+        message: e?.message || 'Falha de conexão',
+      });
+      showNotification('Falha de conexão ao Supabase.');
+    } finally {
+      setIsTestingCloud(false);
+    }
+  };
+
+  const handleSyncWithCloud = async () => {
+    if (!onSyncCloud) return;
+    setIsSyncingCloud(true);
+    try {
+      const res = await onSyncCloud();
+      if (res.success) {
+        showNotification(`Sincronização concluída com sucesso! ${res.count} produtos guardados na nuvem Supabase.`);
+      } else {
+        showNotification(`Aviso: ${res.error || 'A nuvem está pronta mas a tabela "products" ainda precisa de ser inicializada no Supabase.'}`);
+      }
+    } catch (err: any) {
+      showNotification(`Falha ao sincronizar: ${err?.message || 'Erro inesperado'}`);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handlePullFromCloud = async () => {
+    if (!onPullCloud) return;
+    setIsSyncingCloud(true);
+    try {
+      const res = await onPullCloud();
+      if (res.success && res.count > 0) {
+        showNotification(`${res.count} produtos carregados com sucesso a partir da nuvem Supabase!`);
+      } else {
+        showNotification('Nenhum produto encontrado na nuvem Supabase ou tabela vazia.');
+      }
+    } catch (err: any) {
+      showNotification(`Erro ao carregar da nuvem: ${err?.message || 'Erro inesperado'}`);
+    } finally {
+      setIsSyncingCloud(false);
     }
   };
 
@@ -348,6 +426,81 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
                   <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
                   <span>Restaurar Originais</span>
                 </button>
+              </div>
+            </div>
+
+            {/* Supabase Cloud Sync & Connection Bar */}
+            <div className="bg-emerald-950/5 border border-emerald-700/20 rounded-xl p-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-emerald-700/10 text-emerald-800 flex items-center justify-center font-bold">
+                  <Database className="w-4 h-4 text-emerald-700" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-stone-900 flex items-center gap-1.5">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+                      </span>
+                      Supabase Cloud Ativo
+                    </span>
+                    <span className="font-mono text-[11px] text-stone-500 bg-white px-2 py-0.5 rounded border border-stone-200">
+                      {SUPABASE_PROJECT_INFO.host}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    {cloudStatus?.message 
+                      ? cloudStatus.message 
+                      : 'Base de dados PostgreSQL na nuvem pronta para sincronização e backup seguro.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleTestSupabase}
+                  disabled={isTestingCloud}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-stone-100 border border-stone-300 text-stone-700 rounded-lg text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50"
+                  title="Testar ping e conectividade com a API Supabase"
+                >
+                  {isTestingCloud ? (
+                    <Loader2 className="w-3.5 h-3.5 text-emerald-700 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-700" />
+                  )}
+                  <span>{isTestingCloud ? 'A testar...' : 'Testar Conexão'}</span>
+                </button>
+
+                {onSyncCloud && (
+                  <button
+                    type="button"
+                    onClick={handleSyncWithCloud}
+                    disabled={isSyncingCloud}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors disabled:opacity-50"
+                    title="Enviar e atualizar catálogo completo para o Supabase"
+                  >
+                    {isSyncingCloud ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <CloudUpload className="w-3.5 h-3.5" />
+                    )}
+                    <span>{isSyncingCloud ? 'A sincronizar...' : 'Enviar para Supabase'}</span>
+                  </button>
+                )}
+
+                {onPullCloud && (
+                  <button
+                    type="button"
+                    onClick={handlePullFromCloud}
+                    disabled={isSyncingCloud}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-stone-100 border border-stone-300 text-stone-700 rounded-lg text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50"
+                    title="Descarregar catálogo existente no Supabase"
+                  >
+                    <CloudDownload className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Puxar da Nuvem</span>
+                  </button>
+                )}
               </div>
             </div>
 

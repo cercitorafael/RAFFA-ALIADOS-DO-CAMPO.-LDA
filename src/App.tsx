@@ -33,6 +33,8 @@ export default function App() {
     resetToDefault,
     importCatalog,
     exportCatalogJSON,
+    syncWithCloud,
+    pullFromCloud,
   } = useProductsCatalog();
 
   // Admin PIN Auth (4029) Hook
@@ -219,6 +221,8 @@ export default function App() {
         onResetToDefault={resetToDefault}
         onImportJSON={importCatalog}
         onExportJSON={exportCatalogJSON}
+        onSyncCloud={syncWithCloud}
+        onPullCloud={pullFromCloud}
       />
 
       {/* CRUD Create/Edit Product Modal */}

@@ -12,6 +12,11 @@ import {
   loadDeletedIdsFromStorage,
   clearDeletedIds
 } from '../utils/persistentDB';
+import { 
+  syncProductsToCloud, 
+  fetchProductsFromCloud, 
+  deleteProductFromCloud 
+} from '../lib/supabase';
 
 export function useProductsCatalog() {
   const [products, setProducts] = useState<ProductItem[]>(() => {
@@ -165,6 +170,8 @@ export function useProductsCatalog() {
   // Delete a single product in its totality
   const deleteProduct = useCallback(async (id: string) => {
     await deleteProductPermanently(id);
+    // Asynchronously delete from Supabase cloud without blocking local UI
+    deleteProductFromCloud(id).catch(err => console.warn('[Supabase] Background delete failed:', err));
     setProducts((prev) => {
       const updated = prev.filter((item) => item.id !== id);
       saveProductsToStorage(updated);
@@ -176,6 +183,10 @@ export function useProductsCatalog() {
   const deleteAllProducts = useCallback(async () => {
     const allIds = products.map(p => p.id);
     await clearAllProductsFromStorage(allIds);
+    // Asynchronously delete from Supabase cloud
+    allIds.forEach(id => {
+      deleteProductFromCloud(id).catch(err => console.warn('[Supabase] Background delete failed:', err));
+    });
     setProducts([]);
     saveProductsToStorage([]);
   }, [products]);
@@ -184,6 +195,7 @@ export function useProductsCatalog() {
   const deleteMultipleProducts = useCallback(async (idsToDelete: string[]) => {
     for (const id of idsToDelete) {
       await deleteProductPermanently(id);
+      deleteProductFromCloud(id).catch(err => console.warn('[Supabase] Background delete failed:', err));
     }
     setProducts((prev) => {
       const idSet = new Set(idsToDelete);
@@ -254,6 +266,22 @@ export function useProductsCatalog() {
     downloadAnchor.remove();
   }, [products]);
 
+  // Push current catalog to Supabase cloud
+  const syncWithCloud = useCallback(async () => {
+    return await syncProductsToCloud(products);
+  }, [products]);
+
+  // Pull products stored in Supabase cloud and update local catalog
+  const pullFromCloud = useCallback(async () => {
+    const cloudProducts = await fetchProductsFromCloud();
+    if (cloudProducts && cloudProducts.length > 0) {
+      setProducts(cloudProducts);
+      saveProductsToStorage(cloudProducts);
+      return { success: true, count: cloudProducts.length };
+    }
+    return { success: false, count: 0 };
+  }, []);
+
   return {
     products,
     isLoaded,
@@ -266,6 +294,8 @@ export function useProductsCatalog() {
     resetToDefault,
     importCatalog,
     exportCatalogJSON,
+    syncWithCloud,
+    pullFromCloud,
   };
 }
 

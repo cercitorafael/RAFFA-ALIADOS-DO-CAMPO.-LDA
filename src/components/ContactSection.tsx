@@ -14,6 +14,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { COMPANY_INFO } from '../data/agroData';
+import { submitContactToCloud } from '../lib/supabase';
 
 interface ContactSectionProps {
   onOpenQuote: () => void;
@@ -29,6 +30,13 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onOpenQuote }) =
 
   const handleQuickSend = (e: React.FormEvent) => {
     e.preventDefault();
+    // Asynchronously record message in Supabase cloud
+    submitContactToCloud({
+      name: quickMsg.name || 'Cliente Website',
+      phone: quickMsg.phone,
+      message: quickMsg.message,
+    }).catch(err => console.warn('[Supabase] Could not log message:', err));
+
     const text = encodeURIComponent(
       `Olá Raffa Aliados do Campo, meu nome é ${quickMsg.name || 'Cliente'} (${quickMsg.phone || 'S/N'}).\n\nMensagem: ${quickMsg.message}`
     );
