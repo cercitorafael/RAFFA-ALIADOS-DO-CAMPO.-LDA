@@ -8,10 +8,8 @@ import {
   Sparkles, 
   Info,
   Filter,
-  Edit3,
   Plus,
-  Settings2,
-  Trash2
+  Settings2
 } from 'lucide-react';
 import { ProductItem } from '../types';
 import { ProductDetailModal } from './ProductDetailModal';
@@ -22,7 +20,6 @@ interface ProductsSectionProps {
   onOpenAdminCatalog: () => void;
   onAddNewProduct: () => void;
   onEditProduct: (product: ProductItem) => void;
-  onDeleteProduct?: (id: string) => void;
 }
 
 export const ProductsSection: React.FC<ProductsSectionProps> = ({ 
@@ -30,8 +27,7 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
   onOpenQuote,
   onOpenAdminCatalog,
   onAddNewProduct,
-  onEditProduct,
-  onDeleteProduct
+  onEditProduct
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>('todos');
   const [activeSubCategory, setActiveSubCategory] = useState<string>('todas');
@@ -354,17 +350,6 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
                     <span>Pedir Cotação</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
-
-                  {onDeleteProduct && (
-                    <button
-                      id={`btn-delete-product-${product.id}`}
-                      onClick={() => onDeleteProduct(product.id)}
-                      className="p-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors"
-                      title="Eliminar semente na totalidade (Requer PIN)"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                 </div>
 
               </div>

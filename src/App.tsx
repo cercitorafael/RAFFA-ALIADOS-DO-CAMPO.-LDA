@@ -178,7 +178,6 @@ export default function App() {
           onOpenAdminCatalog={handleOpenAdminCatalogProtected}
           onAddNewProduct={handleAddNewProductProtected}
           onEditProduct={handleEditProductProtected}
-          onDeleteProduct={handleDeleteProductProtected}
         />
 
         {/* 4. Agronomic Calculator for Seed & Fertilizer Requirements */}
