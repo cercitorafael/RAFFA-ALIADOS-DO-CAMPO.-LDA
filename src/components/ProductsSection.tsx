@@ -35,8 +35,11 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
   const [showAdminQuickActions, setShowAdminQuickActions] = useState<boolean>(true);
 
+  const featuredCount = products.filter(p => !!p.popular).length;
+
   const categories = [
     { id: 'todos', label: 'Todos os Produtos', count: products.length },
+    { id: 'destaques', label: '⭐ Em Destaque', count: featuredCount },
     { id: 'horticolas', label: 'Hortícolas', count: products.filter(p => p.category === 'horticolas').length },
     { id: 'milho', label: 'Milho', count: products.filter(p => p.category === 'milho').length },
     { id: 'feijao', label: 'Feijões', count: products.filter(p => p.category === 'feijao').length },
@@ -72,7 +75,9 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
   ];
 
   const filteredProducts = products.filter((item) => {
-    const matchesCategory = activeCategory === 'todos' || item.category === activeCategory;
+    const matchesCategory = 
+      activeCategory === 'todos' || 
+      (activeCategory === 'destaques' ? Boolean(item.popular) : item.category === activeCategory);
     const matchesSubCategory = 
       (activeCategory !== 'horticolas' && activeCategory !== 'agroquimicos' && activeCategory !== 'equipamentos') || 
       activeSubCategory === 'todas' || 
@@ -249,7 +254,11 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
               <div
                 key={product.id}
                 id={`product-card-${product.id}`}
-                className="bg-white rounded-3xl overflow-hidden border border-stone-200/90 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group hover:border-emerald-500/40 relative"
+                className={`bg-white rounded-3xl overflow-hidden border shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group relative ${
+                  product.popular 
+                    ? 'border-amber-400/90 ring-2 ring-amber-400/30 hover:border-amber-500' 
+                    : 'border-stone-200/90 hover:border-emerald-500/40'
+                }`}
               >
                 <div>
                   {/* Image Container */}
@@ -265,12 +274,20 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
                     />
                     
                     {/* Floating Badges with clean shadow */}
-                    <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none">
-                      <span className="text-[11px] font-bold text-emerald-950 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-lg shadow-sm border border-emerald-900/10">
-                        {product.categoryLabel}
-                      </span>
+                    <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold text-emerald-950 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-lg shadow-sm border border-emerald-900/10">
+                          {product.categoryLabel}
+                        </span>
+                        {product.popular && (
+                          <span className="bg-amber-400 text-stone-950 text-[10px] font-black uppercase px-2 py-1 rounded-lg shadow-md border border-amber-500/30 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 fill-current" />
+                            Em Destaque
+                          </span>
+                        )}
+                      </div>
                       {product.badge && (
-                        <span className="bg-amber-400 text-stone-950 text-[11px] font-black uppercase px-2.5 py-1 rounded-lg shadow-sm border border-amber-500/20">
+                        <span className="bg-emerald-800 text-white text-[11px] font-black uppercase px-2.5 py-1 rounded-lg shadow-sm border border-emerald-900/20">
                           {product.badge}
                         </span>
                       )}

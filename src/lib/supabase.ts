@@ -296,3 +296,113 @@ export async function submitContactToCloud(messageData: {
     return false;
   }
 }
+
+/**
+ * Fetch featured information announcements from Supabase 'featured_info' table
+ */
+export async function fetchFeaturedInfoFromCloud(): Promise<any[] | null> {
+  if (!isSupabaseConfigured) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('featured_info')
+      .select('*')
+      .order('priority_order', { ascending: true });
+
+    if (error) {
+      // Table may not exist yet in user's supabase - graceful fallback
+      console.warn('[Supabase] featured_info query:', error.message);
+      return null;
+    }
+
+    if (data && Array.isArray(data)) {
+      return data.map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        category: row.category,
+        categoryLabel: row.category_label || row.categoryLabel,
+        badgeText: row.badge_text || row.badgeText,
+        summary: row.summary,
+        details: row.details,
+        highlightStyle: row.highlight_style || row.highlightStyle || 'emerald',
+        actionText: row.action_text || row.actionText,
+        actionType: row.action_type || row.actionType || 'whatsapp',
+        actionUrlOrMessage: row.action_url_or_message || row.actionUrlOrMessage,
+        imageUrl: row.image_url || row.imageUrl,
+        isActive: row.is_active ?? row.isActive ?? true,
+        priorityOrder: row.priority_order ?? row.priorityOrder ?? 1,
+        dateText: row.date_text || row.dateText,
+        createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+        updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : undefined,
+      }));
+    }
+    return [];
+  } catch (err) {
+    console.warn('[Supabase] Error fetching featured info from cloud:', err);
+    return null;
+  }
+}
+
+/**
+ * Sync / Upsert a single featured info to Supabase
+ */
+export async function upsertFeaturedInfoToCloud(item: any): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  try {
+    const payload = {
+      id: item.id,
+      title: item.title,
+      category: item.category,
+      category_label: item.categoryLabel,
+      badge_text: item.badgeText || null,
+      summary: item.summary,
+      details: item.details || null,
+      highlight_style: item.highlightStyle || 'emerald',
+      action_text: item.actionText || null,
+      action_type: item.actionType || 'whatsapp',
+      action_url_or_message: item.actionUrlOrMessage || null,
+      image_url: item.imageUrl || null,
+      is_active: Boolean(item.isActive),
+      priority_order: item.priorityOrder || 1,
+      date_text: item.dateText || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('featured_info')
+      .upsert([payload], { onConflict: 'id' });
+
+    if (error) {
+      console.warn('[Supabase] Could not upsert featured info:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] Error upserting featured info:', err);
+    return false;
+  }
+}
+
+/**
+ * Delete a featured info from Supabase 'featured_info' table
+ */
+export async function deleteFeaturedInfoFromCloud(infoId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  try {
+    const { error } = await supabase
+      .from('featured_info')
+      .delete()
+      .eq('id', infoId);
+
+    if (error) {
+      console.warn('[Supabase] Error deleting featured info from cloud:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] Error in deleteFeaturedInfoFromCloud:', err);
+    return false;
+  }
+}

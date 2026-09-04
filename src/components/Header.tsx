@@ -42,6 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const navLinks = [
     { label: 'Início', href: '#inicio' },
+    { label: 'Destaques', href: '#informacoes-destaque' },
     { label: 'Serviços', href: '#servicos' },
     { label: 'Sementes & Produtos', href: '#produtos' },
     { label: 'Calculadora', href: '#calculadora' },

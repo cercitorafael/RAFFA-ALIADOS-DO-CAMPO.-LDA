@@ -45,6 +45,7 @@ interface AdminCatalogModalProps {
   onExportJSON: () => void;
   onSyncCloud?: () => Promise<{ success: boolean; count: number; error?: string }>;
   onPullCloud?: () => Promise<{ success: boolean; count: number }>;
+  onOpenFeaturedInfoManager?: () => void;
   syncStatus?: 'idle' | 'syncing' | 'synced' | 'error';
   lastSyncedAt?: Date | null;
 }
@@ -64,6 +65,7 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   onExportJSON,
   onSyncCloud,
   onPullCloud,
+  onOpenFeaturedInfoManager,
   syncStatus = 'idle',
   lastSyncedAt,
 }) => {
@@ -430,6 +432,20 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
                   <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
                   <span>Restaurar Originais</span>
                 </button>
+
+                {onOpenFeaturedInfoManager && (
+                  <button
+                    onClick={() => {
+                      onClose();
+                      onOpenFeaturedInfoManager();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-400 hover:bg-amber-300 text-stone-950 rounded-xl text-xs font-black shadow-sm transition-colors"
+                    title="Adicionar ou gerir avisos e comunicados em destaque"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 fill-current" />
+                    <span>Gerir Informações em Destaque</span>
+                  </button>
+                )}
               </div>
             </div>
 

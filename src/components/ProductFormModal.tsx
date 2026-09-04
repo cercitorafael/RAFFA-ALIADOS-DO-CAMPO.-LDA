@@ -329,17 +329,28 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 />
               </div>
 
-              <div className="flex items-center gap-3 pt-6">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
+              <div className="md:col-span-2 bg-amber-50/80 border-2 border-amber-300/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-7 h-7 rounded-xl bg-amber-400 text-stone-950 flex items-center justify-center shrink-0 font-bold mt-0.5">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-stone-900 block">
+                      ⭐ Colocar este Produto e Informações em Destaque
+                    </span>
+                    <span className="text-[11px] text-stone-600 block mt-0.5">
+                      Ao ativar, este produto ganha selo especial e aparece imediatamente na aba e secção "Em Destaque" no catálogo do site.
+                    </span>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
                   <input
                     type="checkbox"
                     checked={popular}
                     onChange={(e) => setPopular(e.target.checked)}
-                    className="w-4 h-4 text-emerald-600 rounded border-stone-300 focus:ring-emerald-500"
+                    className="sr-only peer"
                   />
-                  <span className="text-xs font-bold text-stone-800">
-                    Marcar como Produto em Destaque / Popular
-                  </span>
+                  <div className="w-11 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
                 </label>
               </div>
 

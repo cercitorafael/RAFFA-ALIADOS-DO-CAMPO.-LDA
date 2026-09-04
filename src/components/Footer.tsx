@@ -8,16 +8,24 @@ import {
   ArrowUp,
   Heart,
   ShieldCheck,
-  Settings2
+  Settings2,
+  Plus,
+  Megaphone
 } from 'lucide-react';
 import { COMPANY_INFO } from '../data/agroData';
 import { RaffaLogo } from './RaffaLogo';
 
 interface FooterProps {
   onOpenAdminCatalog?: () => void;
+  onAddNewFeaturedInfo?: () => void;
+  onOpenFeaturedInfoManager?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onOpenAdminCatalog }) => {
+export const Footer: React.FC<FooterProps> = ({ 
+  onOpenAdminCatalog,
+  onAddNewFeaturedInfo,
+  onOpenFeaturedInfoManager,
+}) => {
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -135,6 +143,28 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdminCatalog }) => {
               >
                 <Settings2 className="w-3.5 h-3.5 text-emerald-500" />
                 <span>Gerir Catálogo</span>
+              </button>
+            )}
+            {onAddNewFeaturedInfo && (
+              <button
+                id="footer-add-featured-info-btn"
+                onClick={onAddNewFeaturedInfo}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-stone-200 border border-stone-800 hover:border-stone-700 transition-colors text-xs font-medium cursor-pointer"
+                title="Adicionar Informação ao Destaque"
+              >
+                <Plus className="w-3.5 h-3.5 text-amber-400" />
+                <span>+ Adicionar Informação ao Destaque</span>
+              </button>
+            )}
+            {onOpenFeaturedInfoManager && (
+              <button
+                id="footer-manage-featured-info-btn"
+                onClick={onOpenFeaturedInfoManager}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-stone-200 border border-stone-800 hover:border-stone-700 transition-colors text-xs font-medium cursor-pointer"
+                title="Gerir Destaques da Campanha"
+              >
+                <Megaphone className="w-3.5 h-3.5 text-amber-400" />
+                <span>Gerir Destaques</span>
               </button>
             )}
             <span>

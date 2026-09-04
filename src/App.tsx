@@ -13,9 +13,12 @@ import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { AdminCatalogModal } from './components/AdminCatalogModal';
 import { ProductFormModal } from './components/ProductFormModal';
 import { AdminAuthModal } from './components/AdminAuthModal';
+import { FeaturedInfoSection } from './components/FeaturedInfoSection';
+import { FeaturedInfoModal } from './components/FeaturedInfoModal';
 import { useProductsCatalog } from './hooks/useProductsCatalog';
 import { useAdminAuth } from './hooks/useAdminAuth';
-import { ProductItem } from './types';
+import { useFeaturedInfo } from './hooks/useFeaturedInfo';
+import { ProductItem, FeaturedInfoItem } from './types';
 
 export default function App() {
   const [isQuoteOpen, setIsQuoteOpen] = useState<boolean>(false);
@@ -39,6 +42,16 @@ export default function App() {
     pullFromCloud,
   } = useProductsCatalog();
 
+  // Featured Info (Comunicados & Destaques) Hook
+  const {
+    featuredItems,
+    activeFeaturedItems,
+    addFeaturedItem,
+    updateFeaturedItem,
+    toggleActive: toggleFeaturedInfoActive,
+    deleteFeaturedItem,
+  } = useFeaturedInfo();
+
   // Admin PIN Auth (4029) Hook
   const {
     isAuthenticated,
@@ -53,6 +66,11 @@ export default function App() {
   const [isAdminCatalogOpen, setIsAdminCatalogOpen] = useState<boolean>(false);
   const [isProductFormOpen, setIsProductFormOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
+
+  // Featured Info Modal State
+  const [isFeaturedInfoModalOpen, setIsFeaturedInfoModalOpen] = useState<boolean>(false);
+  const [editingFeaturedInfo, setEditingFeaturedInfo] = useState<FeaturedInfoItem | null>(null);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -158,6 +176,47 @@ export default function App() {
     setEditingProduct(null);
   };
 
+  // Handlers for Featured Info (Comunicados & Informações em Destaque)
+  const handleAddNewFeaturedInfoProtected = () => {
+    checkOrPromptAuth('Adicionar Informação ao Destaque', () => {
+      setEditingFeaturedInfo(null);
+      setIsFeaturedInfoModalOpen(true);
+    });
+  };
+
+  const handleEditFeaturedInfoProtected = (item: FeaturedInfoItem) => {
+    checkOrPromptAuth(`Editar Informação "${item.title}"`, () => {
+      setEditingFeaturedInfo(item);
+      setIsFeaturedInfoModalOpen(true);
+    });
+  };
+
+  const handleToggleFeaturedInfoActiveProtected = (id: string) => {
+    checkOrPromptAuth('Alterar Exibição no Destaque', async () => {
+      await toggleFeaturedInfoActive(id);
+      showToast('Estado de exibição no destaque atualizado com sucesso!');
+    });
+  };
+
+  const handleDeleteFeaturedInfoProtected = (id: string) => {
+    checkOrPromptAuth('Eliminar Informação do Destaque', async () => {
+      await deleteFeaturedItem(id);
+      showToast('Informação eliminada com sucesso!');
+    });
+  };
+
+  const handleSaveFeaturedInfo = async (infoData: Omit<FeaturedInfoItem, 'id' | 'createdAt'> & { id?: string }) => {
+    if (infoData.id) {
+      await updateFeaturedItem(infoData.id, infoData);
+      showToast(`Informação "${infoData.title}" atualizada com sucesso!`);
+    } else {
+      await addFeaturedItem(infoData);
+      showToast(`Nova informação "${infoData.title}" adicionada e publicada no destaque!`);
+    }
+    setIsFeaturedInfoModalOpen(false);
+    setEditingFeaturedInfo(null);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-stone-50 text-stone-900 font-['Plus_Jakarta_Sans',sans-serif]">
       {/* Navigation Header */}
@@ -171,6 +230,16 @@ export default function App() {
       <main className="flex-1">
         {/* 1. Hero Section matching prompt */}
         <Hero onOpenQuote={() => handleOpenQuote('Pacote de Início de Campanha')} />
+
+        {/* Informações & Comunicados em Destaque Section */}
+        <FeaturedInfoSection 
+          items={featuredItems}
+          onOpenQuote={handleOpenQuote}
+          onAddNewInfo={handleAddNewFeaturedInfoProtected}
+          onEditInfo={handleEditFeaturedInfoProtected}
+          onToggleActive={handleToggleFeaturedInfoActiveProtected}
+          onDeleteInfo={handleDeleteFeaturedInfoProtected}
+        />
 
         {/* 2. Services Section (Sementes, Fertilizantes, Agroquímicos, Equipamentos, Prestação de Serviços) */}
         <ServicesSection onOpenQuote={handleOpenQuote} />
@@ -195,7 +264,16 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <Footer onOpenAdminCatalog={handleOpenAdminCatalogProtected} />
+      <Footer 
+        onOpenAdminCatalog={handleOpenAdminCatalogProtected}
+        onAddNewFeaturedInfo={handleAddNewFeaturedInfoProtected}
+        onOpenFeaturedInfoManager={() => {
+          const el = document.getElementById('informacoes-destaque');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth' });
+          }
+        }}
+      />
 
       {/* Floating Action Button */}
       <FloatingWhatsApp />
@@ -225,6 +303,7 @@ export default function App() {
         onExportJSON={exportCatalogJSON}
         onSyncCloud={syncWithCloud}
         onPullCloud={pullFromCloud}
+        onOpenFeaturedInfoManager={handleAddNewFeaturedInfoProtected}
         syncStatus={syncStatus}
         lastSyncedAt={lastSyncedAt}
       />
@@ -235,6 +314,17 @@ export default function App() {
         onClose={handleCloseProductForm}
         onSave={handleSaveProduct}
         initialProduct={editingProduct}
+      />
+
+      {/* CRUD Create/Edit Featured Information Modal */}
+      <FeaturedInfoModal
+        isOpen={isFeaturedInfoModalOpen}
+        onClose={() => {
+          setIsFeaturedInfoModalOpen(false);
+          setEditingFeaturedInfo(null);
+        }}
+        onSave={handleSaveFeaturedInfo}
+        initialInfo={editingFeaturedInfo}
       />
 
       {/* Security PIN 4029 Authentication Modal */}

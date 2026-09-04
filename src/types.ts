@@ -52,3 +52,23 @@ export interface QuoteFormData {
   areaOrQuantity: string;
   notes: string;
 }
+
+export interface FeaturedInfoItem {
+  id: string;
+  title: string;
+  category: 'comunicado' | 'campanha' | 'sementes' | 'alerta' | 'preco' | 'geral';
+  categoryLabel: string;
+  badgeText?: string;
+  summary: string;
+  details?: string;
+  highlightStyle: 'emerald' | 'amber' | 'blue' | 'red';
+  actionText?: string;
+  actionType?: 'whatsapp' | 'quote' | 'link' | 'none';
+  actionUrlOrMessage?: string;
+  imageUrl?: string;
+  isActive: boolean; // Se sai no destaque
+  priorityOrder?: number;
+  dateText?: string;
+  createdAt: number;
+  updatedAt?: number;
+}
