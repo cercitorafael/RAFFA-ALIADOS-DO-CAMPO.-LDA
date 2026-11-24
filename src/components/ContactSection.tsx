@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { COMPANY_INFO } from '../data/agroData';
 import { saveContactToLocalDB } from '../utils/persistentDB';
+import { saveCloudContact } from '../utils/cloudSync';
 import { StoreMap } from './StoreMap';
 
 interface ContactSectionProps {
@@ -31,11 +32,15 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onOpenQuote }) =
 
   const handleQuickSend = (e: React.FormEvent) => {
     e.preventDefault();
-    void saveContactToLocalDB({
+    const sharedId = `contact-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const payload = {
+      id: sharedId,
       name: quickMsg.name || 'Cliente Website',
       phone: quickMsg.phone,
       message: quickMsg.message,
-    });
+    };
+    void saveContactToLocalDB(payload);
+    void saveCloudContact(payload);
 
     const text = encodeURIComponent(
       `Olá Raffa Aliados do Campo, meu nome é ${quickMsg.name || 'Cliente'} (${quickMsg.phone || 'S/N'}).\n\nMensagem: ${quickMsg.message}`

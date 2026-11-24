@@ -53,7 +53,9 @@ export default defineConfig(() => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           navigateFallback: 'index.html',
+          navigateFallbackDenylist: [/^\/__\/auth\//],
           cleanupOutdatedCaches: true,
           clientsClaim: true,
           skipWaiting: true,
@@ -111,6 +113,15 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          },
+        },
       },
     },
     server: {

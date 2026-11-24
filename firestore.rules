@@ -1,0 +1,294 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default deny everything unless explicitly permitted
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // GLOBAL HELPERS
+    // =========================================================================
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedEmail() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerifiedEmail() && (
+        request.auth.token.email == 'raffaaliadosdocampo@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isOptionalString(data, key, maxLen) {
+      return !(key in data) || data[key] == null || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isOptionalBool(data, key) {
+      return !(key in data) || data[key] == null || data[key] is bool;
+    }
+
+    function isOptionalNumber(data, key) {
+      return !(key in data) || data[key] == null || data[key] is number;
+    }
+
+    function isValidSpecs(specs) {
+      return specs is map &&
+        specs.keys().hasOnly(['cycleDays', 'seedRatePerHa', 'recommendedSpacing', 'potentialYield', 'packaging']) &&
+        isOptionalString(specs, 'cycleDays', 120) &&
+        isOptionalString(specs, 'seedRatePerHa', 200) &&
+        isOptionalString(specs, 'recommendedSpacing', 200) &&
+        isOptionalString(specs, 'potentialYield', 200) &&
+        isOptionalString(specs, 'packaging', 200);
+    }
+
+    function isValidProduct(data, docId) {
+      return data.keys().hasAll(['id', 'name', 'category', 'categoryLabel', 'tagline', 'description', 'image', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'id', 'name', 'category', 'subCategory', 'categoryLabel', 'tagline',
+          'description', 'varieties', 'specs', 'image', 'badge', 'popular',
+          'priceMzn', 'priceUnit', 'stockStatus', 'isUserCreated', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == docId &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
+        data.category in ['horticolas', 'milho', 'feijao', 'arroz', 'gergelim', 'insumos', 'agroquimicos', 'equipamentos'] &&
+        isOptionalString(data, 'subCategory', 80) &&
+        data.categoryLabel is string && data.categoryLabel.size() >= 1 && data.categoryLabel.size() <= 100 &&
+        data.tagline is string && data.tagline.size() <= 300 &&
+        data.description is string && data.description.size() <= 3000 &&
+        data.image is string && data.image.size() >= 1 && data.image.size() <= 750000 &&
+        isOptionalString(data, 'badge', 80) &&
+        isOptionalBool(data, 'popular') &&
+        isOptionalNumber(data, 'priceMzn') &&
+        isOptionalString(data, 'priceUnit', 60) &&
+        (!('stockStatus' in data) || data.stockStatus == null || data.stockStatus in ['available', 'low', 'out_of_stock']) &&
+        isOptionalBool(data, 'isUserCreated') &&
+        (!('varieties' in data) || data.varieties == null || (
+          data.varieties is list &&
+          data.varieties.size() <= 30 &&
+          (data.varieties.size() == 0 || (data.varieties[0] is string && data.varieties[0].size() <= 120))
+        )) &&
+        (!('specs' in data) || data.specs == null || isValidSpecs(data.specs)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidFeaturedInfo(data, docId) {
+      return data.keys().hasAll(['id', 'title', 'category', 'categoryLabel', 'summary', 'highlightStyle', 'actionType', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'id', 'title', 'category', 'categoryLabel', 'badgeText', 'summary',
+          'details', 'highlightStyle', 'actionType', 'actionText', 'actionUrlOrMessage',
+          'imageUrl', 'isActive', 'dateText', 'priorityOrder', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == docId &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.category in ['sementes', 'campanha', 'alerta', 'comunicado', 'preco', 'geral'] &&
+        data.categoryLabel is string && data.categoryLabel.size() >= 1 && data.categoryLabel.size() <= 100 &&
+        isOptionalString(data, 'badgeText', 80) &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 1000 &&
+        isOptionalString(data, 'details', 3000) &&
+        data.highlightStyle in ['emerald', 'amber', 'red', 'blue'] &&
+        data.actionType in ['whatsapp', 'quote', 'none'] &&
+        isOptionalString(data, 'actionText', 100) &&
+        isOptionalString(data, 'actionUrlOrMessage', 500) &&
+        isOptionalString(data, 'imageUrl', 750000) &&
+        data.isActive is bool &&
+        isOptionalString(data, 'dateText', 100) &&
+        isOptionalNumber(data, 'priorityOrder') &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBrandSetting(data) {
+      return data.keys().hasAll(['updatedAt']) &&
+        data.keys().hasOnly(['logoImage', 'companyName', 'slogan', 'subSlogan', 'updatedAt']) &&
+        isOptionalString(data, 'logoImage', 750000) &&
+        isOptionalString(data, 'companyName', 150) &&
+        isOptionalString(data, 'slogan', 200) &&
+        isOptionalString(data, 'subSlogan', 250) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCatalogMeta(data) {
+      return data.keys().hasAll(['initialized', 'updatedAt']) &&
+        data.keys().hasOnly(['initialized', 'updatedAt']) &&
+        data.initialized is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidQuote(data) {
+      return data.keys().hasAll(['name', 'phone', 'location', 'selectedCategory', 'selectedProduct', 'areaOrQuantity', 'status', 'createdAt']) &&
+        data.keys().hasOnly([
+          'name', 'phone', 'location', 'selectedCategory', 'selectedProduct',
+          'areaOrQuantity', 'notes', 'status', 'totalMzn', 'source', 'createdAt', 'updatedAt'
+        ]) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 150 &&
+        data.phone is string && data.phone.size() <= 50 &&
+        data.location is string && data.location.size() <= 200 &&
+        data.selectedCategory is string && data.selectedCategory.size() >= 1 && data.selectedCategory.size() <= 150 &&
+        data.selectedProduct is string && data.selectedProduct.size() <= 1000 &&
+        data.areaOrQuantity is string && data.areaOrQuantity.size() <= 200 &&
+        isOptionalString(data, 'notes', 2000) &&
+        data.status in ['pending', 'contacted', 'resolved'] &&
+        isOptionalNumber(data, 'totalMzn') &&
+        (!('source' in data) || data.source == null || data.source in ['quote_modal', 'cart_order']) &&
+        data.createdAt is timestamp &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidContactMessage(data) {
+      return data.keys().hasAll(['name', 'message', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['name', 'email', 'phone', 'subject', 'message', 'status', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 150 &&
+        isOptionalString(data, 'email', 150) &&
+        isOptionalString(data, 'phone', 50) &&
+        isOptionalString(data, 'subject', 200) &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 2500 &&
+        data.status in ['pending', 'resolved'] &&
+        data.createdAt is timestamp &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // =========================================================================
+    // COLLECTIONS
+    // =========================================================================
+
+    // Public catalog read (storefront), admin-only write
+    match /products/{productId} {
+      allow get: if isValidId(productId);
+      allow list: if resource.data.id is string;
+      allow create: if isAdmin() &&
+        isValidId(productId) &&
+        isValidProduct(incoming(), productId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(productId) &&
+        isValidProduct(incoming(), productId) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'category', 'subCategory', 'categoryLabel', 'tagline',
+          'description', 'varieties', 'specs', 'image', 'badge', 'popular',
+          'priceMzn', 'priceUnit', 'stockStatus', 'isUserCreated', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(productId);
+    }
+
+    // Public featured info read (storefront), admin-only write
+    match /featured_info/{infoId} {
+      allow get: if isValidId(infoId);
+      allow list: if resource.data.id is string;
+      allow create: if isAdmin() &&
+        isValidId(infoId) &&
+        isValidFeaturedInfo(incoming(), infoId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(infoId) &&
+        isValidFeaturedInfo(incoming(), infoId) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'category', 'categoryLabel', 'badgeText', 'summary',
+          'details', 'highlightStyle', 'actionType', 'actionText', 'actionUrlOrMessage',
+          'imageUrl', 'isActive', 'dateText', 'priorityOrder', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(infoId);
+    }
+
+    // Public brand logo read, admin-only write
+    match /brand_settings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() &&
+        isValidId(settingId) &&
+        isValidBrandSetting(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(settingId) &&
+        isValidBrandSetting(incoming()) &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'logoImage', 'companyName', 'slogan', 'subSlogan', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(settingId);
+    }
+
+    // Cloud initialization flags (catalog / featured)
+    match /meta/{metaId} {
+      allow get: if isValidId(metaId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() &&
+        isValidId(metaId) &&
+        isValidCatalogMeta(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(metaId) &&
+        isValidCatalogMeta(incoming()) &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['initialized', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(metaId);
+    }
+
+    // Customer quotes & order lists (Public create, Admin-only read/update/delete for PII protection)
+    match /quotes/{quoteId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(quoteId) &&
+        isValidQuote(incoming()) &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        !('updatedAt' in incoming());
+      allow update: if isAdmin() &&
+        isValidId(quoteId) &&
+        isValidQuote(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(quoteId);
+    }
+
+    // Customer inquiry messages (Public create, Admin-only read/update/delete for PII protection)
+    match /contact_messages/{messageId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(messageId) &&
+        isValidContactMessage(incoming()) &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        !('updatedAt' in incoming());
+      allow update: if isAdmin() &&
+        isValidId(messageId) &&
+        isValidContactMessage(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(messageId);
+    }
+
+    // Explicit admin list (read-only by existing admin or own doc; no client self-escalation)
+    match /admins/{userId} {
+      allow get: if isAdmin() || (isVerifiedEmail() && request.auth.uid == userId);
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+  }
+}

@@ -16,6 +16,7 @@ import {
 import { COMPANY_INFO, PRODUCTS_DATA } from '../data/agroData';
 import { QuoteFormData } from '../types';
 import { saveQuoteToLocalDB } from '../utils/persistentDB';
+import { saveCloudQuote } from '../utils/cloudSync';
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -74,9 +75,16 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
     );
   };
 
+  const persistQuote = () => {
+    const sharedId = `quote-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const payload = { ...formData, id: sharedId, source: 'quote_modal' as const };
+    void saveQuoteToLocalDB(payload);
+    void saveCloudQuote(payload);
+  };
+
   const handleWhatsAppSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    void saveQuoteToLocalDB(formData);
+    persistQuote();
     const url = `https://wa.me/258${COMPANY_INFO.whatsapp}?text=${buildWhatsAppMessage()}`;
     window.open(url, '_blank');
     setSubmitted(true);
@@ -84,7 +92,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
 
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    void saveQuoteToLocalDB(formData);
+    persistQuote();
     const subject = encodeURIComponent(`Solicitação de Orçamento - ${formData.name || 'Cliente'}`);
     const body = encodeURIComponent(
       `Nome: ${formData.name}\n` +

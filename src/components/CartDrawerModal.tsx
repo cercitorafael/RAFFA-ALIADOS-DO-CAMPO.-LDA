@@ -17,6 +17,7 @@ import {
 import { CartItem } from '../types';
 import { COMPANY_INFO } from '../data/agroData';
 import { saveQuoteToLocalDB } from '../utils/persistentDB';
+import { saveCloudQuote } from '../utils/cloudSync';
 
 interface CartDrawerModalProps {
   isOpen: boolean;
@@ -82,7 +83,9 @@ export const CartDrawerModal: React.FC<CartDrawerModalProps> = ({
       .map((i) => `${i.quantity}x ${i.name}${i.priceMzn ? ` (${formatMzn(i.priceMzn)} MZN)` : ''}`)
       .join(', ');
 
-    void saveQuoteToLocalDB({
+    const sharedId = `quote-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const payload = {
+      id: sharedId,
       name: customerName.trim() || 'Produtor / Cliente',
       phone: customerPhone.trim() || 'Não informado',
       location: customerLocation.trim() || 'Ribaué / Nampula',
@@ -91,8 +94,11 @@ export const CartDrawerModal: React.FC<CartDrawerModalProps> = ({
       areaOrQuantity: `${items.reduce((s, i) => s + i.quantity, 0)} item(ns)`,
       notes: notes.trim(),
       totalMzn: estimatedTotalMzn > 0 ? estimatedTotalMzn : undefined,
-      source: 'cart_order',
-    });
+      source: 'cart_order' as const,
+    };
+
+    void saveQuoteToLocalDB(payload);
+    void saveCloudQuote(payload);
   };
 
   const handleSendWhatsApp = (e: React.FormEvent) => {

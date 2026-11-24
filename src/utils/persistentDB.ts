@@ -885,6 +885,27 @@ export async function saveProductsToStorage(products: ProductItem[]): Promise<vo
   });
 }
 
+/**
+ * Replaces the local catalog cache with the authoritative cloud catalog
+ * and clears stale local deletion tombstones.
+ */
+export async function replaceLocalCatalogFromCloud(cloudProducts: ProductItem[]): Promise<void> {
+  safeRemoveLocalStorage(DELETED_IDS_LS_KEY);
+  await enqueueWrite(async () => {
+    try {
+      const db = await openDB();
+      if (db.objectStoreNames.contains(DELETED_STORE)) {
+        const tx = db.transaction(DELETED_STORE, 'readwrite');
+        tx.objectStore(DELETED_STORE).put({ key: 'products', ids: [] });
+        await txDone(tx);
+      }
+    } catch {
+      // ignore
+    }
+  });
+  await saveProductsToStorage(cloudProducts);
+}
+
 // ============================================================================
 // FEATURED INFO / DESTAQUES PERSISTENCE (UNLIMITED LOCAL STORAGE + TOMBSTONES)
 // ============================================================================
@@ -1039,6 +1060,27 @@ export async function saveFeaturedInfoToStorage(items: FeaturedInfoItem[]): Prom
       console.error('Error saving featured info to IndexedDB:', err);
     }
   });
+}
+
+/**
+ * Replaces the local featured info cache with the authoritative cloud list
+ * and clears stale local deletion tombstones.
+ */
+export async function replaceLocalFeaturedFromCloud(cloudItems: FeaturedInfoItem[]): Promise<void> {
+  safeRemoveLocalStorage(FEATURED_DELETED_LS_KEY);
+  await enqueueWrite(async () => {
+    try {
+      const db = await openDB();
+      if (db.objectStoreNames.contains(DELETED_STORE)) {
+        const tx = db.transaction(DELETED_STORE, 'readwrite');
+        tx.objectStore(DELETED_STORE).put({ key: 'featured_info', ids: [] });
+        await txDone(tx);
+      }
+    } catch {
+      // ignore
+    }
+  });
+  await saveFeaturedInfoToStorage(cloudItems);
 }
 
 export async function upsertFeaturedInfoToStorage(item: FeaturedInfoItem): Promise<void> {
@@ -1200,7 +1242,7 @@ export async function resetFeaturedInfoToDefault(): Promise<FeaturedInfoItem[]> 
 // ============================================================================
 
 export async function saveQuoteToLocalDB(
-  quote: QuoteFormData & { totalMzn?: number; source?: 'quote_modal' | 'cart_order' }
+  quote: QuoteFormData & { id?: string; totalMzn?: number; source?: 'quote_modal' | 'cart_order' }
 ): Promise<void> {
   await enqueueWrite(async () => {
     try {
@@ -1208,8 +1250,8 @@ export async function saveQuoteToLocalDB(
       if (!db.objectStoreNames.contains(QUOTES_STORE)) return;
       const tx = db.transaction(QUOTES_STORE, 'readwrite');
       tx.objectStore(QUOTES_STORE).put({
-        id: `quote-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         ...quote,
+        id: quote.id || `quote-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         status: 'pending',
         createdAt: Date.now(),
       });
@@ -1283,6 +1325,7 @@ export async function deleteQuoteFromLocalDB(quoteId: string): Promise<void> {
 }
 
 export async function saveContactToLocalDB(messageData: {
+  id?: string;
   name: string;
   email?: string;
   phone?: string;
@@ -1295,8 +1338,8 @@ export async function saveContactToLocalDB(messageData: {
       if (!db.objectStoreNames.contains(CONTACTS_STORE)) return;
       const tx = db.transaction(CONTACTS_STORE, 'readwrite');
       tx.objectStore(CONTACTS_STORE).put({
-        id: `contact-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         ...messageData,
+        id: messageData.id || `contact-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         status: 'pending',
         createdAt: Date.now(),
       });

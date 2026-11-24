@@ -29,7 +29,12 @@ import {
   Mail,
   Megaphone,
   Eye,
-  EyeOff
+  EyeOff,
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { ContactMessageRecord, FeaturedInfoItem, ProductItem, QuoteRecord } from '../types';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
@@ -41,6 +46,14 @@ import {
   updateContactStatusInLocalDB,
   updateQuoteStatusInLocalDB,
 } from '../utils/persistentDB';
+import {
+  loadCloudQuotes,
+  loadCloudContacts,
+  updateCloudQuoteStatus,
+  deleteCloudQuote,
+  updateCloudContactStatus,
+  deleteCloudContact,
+} from '../utils/cloudSync';
 import { formatMzn } from './CartDrawerModal';
 import { COMPANY_INFO } from '../data/agroData';
 
@@ -63,6 +76,15 @@ interface AdminCatalogModalProps {
   onToggleFeaturedInfoActive?: (id: string) => void;
   onDeleteFeaturedInfo?: (id: string) => void;
   onChangeAdminPin?: (oldPin: string, newPin: string) => Promise<{ ok: boolean; error?: string }>;
+  isCloudAdmin?: boolean;
+  cloudUserEmail?: string | null;
+  isSigningInCloud?: boolean;
+  cloudAuthError?: string | null;
+  onSignInCloud?: () => Promise<void>;
+  onSignOutCloud?: () => Promise<void>;
+  isCatalogCloudInitialized?: boolean;
+  isCloudSyncing?: boolean;
+  onSyncAllToCloud?: () => Promise<void>;
 }
 
 export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
@@ -84,6 +106,15 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   onToggleFeaturedInfoActive,
   onDeleteFeaturedInfo,
   onChangeAdminPin,
+  isCloudAdmin = false,
+  cloudUserEmail = null,
+  isSigningInCloud = false,
+  cloudAuthError = null,
+  onSignInCloud,
+  onSignOutCloud,
+  isCatalogCloudInitialized = false,
+  isCloudSyncing = false,
+  onSyncAllToCloud,
 }) => {
   const [activeTab, setActiveTab] = useState<'catalog' | 'featured' | 'history' | 'security'>('catalog');
   const [searchQuery, setSearchQuery] = useState('');
@@ -108,13 +139,23 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   const [pinFeedback, setPinFeedback] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
 
   const refreshHistory = React.useCallback(async () => {
-    const [qList, cList] = await Promise.all([
+    const [localQ, localC, cloudQ, cloudC] = await Promise.all([
       loadQuotesFromLocalDB(),
       loadContactsFromLocalDB(),
+      isCloudAdmin ? loadCloudQuotes().catch(() => []) : Promise.resolve([]),
+      isCloudAdmin ? loadCloudContacts().catch(() => []) : Promise.resolve([]),
     ]);
-    setQuotesHistory(qList);
-    setContactsHistory(cList);
-  }, []);
+
+    const qMap = new Map<string, QuoteRecord>();
+    localQ.forEach((item) => qMap.set(item.id, item));
+    cloudQ.forEach((item) => qMap.set(item.id, item));
+    setQuotesHistory(Array.from(qMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+
+    const cMap = new Map<string, ContactMessageRecord>();
+    localC.forEach((item) => cMap.set(item.id, item));
+    cloudC.forEach((item) => cMap.set(item.id, item));
+    setContactsHistory(Array.from(cMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+  }, [isCloudAdmin]);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -142,12 +183,18 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   const handleToggleQuoteStatus = async (q: QuoteRecord) => {
     const nextStatus = q.status === 'resolved' ? 'pending' : 'resolved';
     await updateQuoteStatusInLocalDB(q.id, nextStatus);
+    if (isCloudAdmin) {
+      await updateCloudQuoteStatus(q.id, nextStatus).catch((err) => console.warn(err));
+    }
     await refreshHistory();
     showNotification(`Pedido de "${q.name}" marcado como ${nextStatus === 'resolved' ? 'Atendido' : 'Pendente'}.`);
   };
 
   const handleDeleteQuote = async (id: string) => {
     await deleteQuoteFromLocalDB(id);
+    if (isCloudAdmin) {
+      await deleteCloudQuote(id).catch((err) => console.warn(err));
+    }
     await refreshHistory();
     showNotification('Registo de orçamento eliminado.');
   };
@@ -155,12 +202,18 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   const handleToggleContactStatus = async (c: ContactMessageRecord) => {
     const nextStatus = c.status === 'resolved' ? 'pending' : 'resolved';
     await updateContactStatusInLocalDB(c.id, nextStatus);
+    if (isCloudAdmin) {
+      await updateCloudContactStatus(c.id, nextStatus).catch((err) => console.warn(err));
+    }
     await refreshHistory();
     showNotification(`Mensagem de "${c.name}" marcada como ${nextStatus === 'resolved' ? 'Atendida' : 'Pendente'}.`);
   };
 
   const handleDeleteContact = async (id: string) => {
     await deleteContactFromLocalDB(id);
+    if (isCloudAdmin) {
+      await deleteCloudContact(id).catch((err) => console.warn(err));
+    }
     await refreshHistory();
     showNotification('Mensagem eliminada.');
   };
@@ -423,6 +476,106 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
               <KeyRound className="w-3.5 h-3.5" />
               <span>Segurança (PIN)</span>
             </button>
+          </div>
+
+          {/* Cloud Persistence / Vercel Sync Status Bar */}
+          <div
+            className={`px-5 py-2.5 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0 ${
+              isCloudAdmin
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                : 'bg-amber-50 border-amber-200 text-amber-950'
+            }`}
+          >
+            <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+              {isCloudAdmin ? (
+                <Cloud className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5 sm:mt-0" />
+              ) : (
+                <CloudOff className="w-4 h-4 text-amber-700 shrink-0 mt-0.5 sm:mt-0" />
+              )}
+              <div className="text-xs leading-snug">
+                {isCloudAdmin ? (
+                  <>
+                    <span className="font-bold text-emerald-900">
+                      Nuvem Ligada ({cloudUserEmail})
+                    </span>
+                    <span className="text-emerald-800 ml-1.5">
+                      {!isCatalogCloudInitialized
+                        ? '— Clique em "Publicar na Nuvem" para gravar todas as suas edições locais para todos no Vercel.'
+                        : '— Todas as alterações são guardadas na nuvem e sincronizadas em qualquer dispositivo.'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-bold text-amber-950">
+                      Modo Apenas Local neste navegador:
+                    </span>
+                    <span className="text-amber-900 ml-1">
+                      Entre com o Google Admin ({COMPANY_INFO.email}) para guardar permanentemente no Vercel e publicar para todos os clientes.
+                    </span>
+                  </>
+                )}
+                {cloudAuthError && (
+                  <div className="mt-1 text-[11px] font-bold text-red-700">
+                    {cloudAuthError}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {isCloudAdmin ? (
+                <>
+                  {onSyncAllToCloud && (
+                    <button
+                      type="button"
+                      disabled={isCloudSyncing}
+                      onClick={() => void onSyncAllToCloud()}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-60 ${
+                        !isCatalogCloudInitialized
+                          ? 'bg-amber-400 hover:bg-amber-300 text-stone-950 animate-pulse'
+                          : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                      }`}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+                      <span>
+                        {isCloudSyncing
+                          ? 'A sincronizar...'
+                          : !isCatalogCloudInitialized
+                          ? 'Publicar Catálogo Local na Nuvem'
+                          : 'Sincronizar Tudo → Nuvem'}
+                      </span>
+                    </button>
+                  )}
+                  {onSignOutCloud && (
+                    <button
+                      type="button"
+                      onClick={() => void onSignOutCloud()}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-stone-100 border border-emerald-200 text-emerald-900 text-xs font-semibold cursor-pointer"
+                      title="Terminar sessão Google Admin"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sair Google</span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                onSignInCloud && (
+                  <button
+                    type="button"
+                    disabled={isSigningInCloud}
+                    onClick={() => void onSignInCloud()}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>
+                      {isSigningInCloud
+                        ? 'A abrir Google...'
+                        : 'Entrar com Google Admin (Nuvem / Vercel)'}
+                    </span>
+                  </button>
+                )
+              )}
+            </div>
           </div>
 
           {/* Notification Toast */}
@@ -921,10 +1074,12 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-stone-200 shadow-sm">
                 <div>
                   <h3 className="text-base font-extrabold text-stone-900 font-['Outfit']">
-                    Histórico Local de Orçamentos, Carrinhos & Mensagens
+                    Histórico de Orçamentos, Carrinhos & Mensagens
                   </h3>
                   <p className="text-xs text-stone-500">
-                    Todos os pedidos enviados pelo website ficam registados localmente neste navegador.
+                    {isCloudAdmin
+                      ? 'Sincronizado com a nuvem Firebase: pedidos enviados de qualquer dispositivo aparecem aqui.'
+                      : 'Pedidos guardados localmente neste navegador. Entre com o Google Admin acima para ver pedidos da nuvem.'}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1197,7 +1352,7 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
           <div className="bg-stone-50 px-6 py-3.5 border-t border-stone-200 flex items-center justify-between text-xs text-stone-500 shrink-0">
             <div className="flex items-center gap-1.5">
               <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Armazenamento local ilimitado (IndexedDB): todas as adições e eliminações permanecem guardadas permanentemente.</span>
+              <span>Nuvem Firebase + Cache Offline (IndexedDB): sincronização global entre dispositivos e funcionamento garantido sem internet.</span>
             </div>
             <button
               onClick={onClose}

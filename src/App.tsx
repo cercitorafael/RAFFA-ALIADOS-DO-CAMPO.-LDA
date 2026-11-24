@@ -21,16 +21,30 @@ import { CartDrawerModal } from './components/CartDrawerModal';
 import { useProductsCatalog } from './hooks/useProductsCatalog';
 import { useAdminAuth } from './hooks/useAdminAuth';
 import { useFeaturedInfo } from './hooks/useFeaturedInfo';
+import { useBrandConfig } from './hooks/useBrandConfig';
 import { useCart } from './hooks/useCart';
+import { useFirebaseAuth } from './contexts/FirebaseAuthContext';
 import { ProductItem, FeaturedInfoItem } from './types';
 
 export default function App() {
   const [isQuoteOpen, setIsQuoteOpen] = useState<boolean>(false);
   const [quoteInitialProduct, setQuoteInitialProduct] = useState<string>('');
 
+  const {
+    user: cloudUser,
+    isCloudAdmin,
+    authError: cloudAuthError,
+    isSigningIn: isSigningInCloud,
+    signInWithGoogle,
+    signOutCloud,
+  } = useFirebaseAuth();
+
   // CRUD Catalog State & Hook
   const {
     products,
+    isCloudInitialized,
+    isCloudSyncing,
+    syncAllToCloud,
     addProduct,
     updateProduct,
     deleteProduct,
@@ -45,16 +59,18 @@ export default function App() {
   // Featured Info (Comunicados & Destaques) Hook
   const {
     featuredItems,
-    activeFeaturedItems,
+    syncFeaturedToCloud,
     addFeaturedItem,
     updateFeaturedItem,
     toggleActive: toggleFeaturedInfoActive,
     deleteFeaturedItem,
   } = useFeaturedInfo();
 
+  // Brand Config Hook (for cloud sync of custom logo)
+  const { syncLogoToCloud } = useBrandConfig();
+
   // Admin PIN Auth Hook
   const {
-    isAuthenticated,
     isAuthModalOpen,
     authActionTitle,
     checkOrPromptAuth,
@@ -189,16 +205,51 @@ export default function App() {
     });
   };
 
-  const handleSaveProduct = (productData: Omit<ProductItem, 'id'> & { id?: string }) => {
+  const handleSaveProduct = async (productData: Omit<ProductItem, 'id'> & { id?: string }) => {
     if (productData.id) {
-      updateProduct(productData.id, productData);
-      showToast(`Alterações de "${productData.name}" guardadas com sucesso!`);
+      const res = await updateProduct(productData.id, productData);
+      if (res.syncedToCloud) {
+        showToast(`"${productData.name}" atualizado e publicado na nuvem!`);
+      } else if (res.cloudError) {
+        showToast(`"${productData.name}" guardado localmente (aviso nuvem: ${res.cloudError}).`);
+      } else {
+        showToast(`"${productData.name}" guardado localmente. Entre com Google Admin para publicar no Vercel.`);
+      }
     } else {
-      addProduct(productData);
-      showToast(`Novo produto "${productData.name}" adicionado e guardado!`);
+      const res = await addProduct(productData);
+      if (res.syncedToCloud) {
+        showToast(`Novo produto "${productData.name}" adicionado e publicado na nuvem!`);
+      } else if (res.cloudError) {
+        showToast(`"${productData.name}" guardado localmente (aviso nuvem: ${res.cloudError}).`);
+      } else {
+        showToast(`Novo produto "${productData.name}" guardado localmente. Entre com Google Admin para publicar.`);
+      }
     }
     setIsProductFormOpen(false);
     setEditingProduct(null);
+  };
+
+  const handleSignInCloud = async () => {
+    const res = await signInWithGoogle();
+    if (res.ok && res.isAdmin) {
+      showToast('Sessão Google Admin ligada! Pode agora publicar e sincronizar alterações na nuvem.');
+    } else if (res.error) {
+      showToast(res.error);
+    }
+  };
+
+  const handleSyncAllToCloud = async () => {
+    const res = await syncAllToCloud();
+    try {
+      await Promise.all([syncFeaturedToCloud(), syncLogoToCloud()]);
+    } catch (err) {
+      console.warn('Aviso ao sincronizar destaques/logótipo:', err);
+    }
+    if (res.syncedToCloud) {
+      showToast('Catálogo, preços, fotos e destaques publicados na nuvem para todos os dispositivos!');
+    } else if (res.cloudError) {
+      showToast(`Erro ao sincronizar na nuvem: ${res.cloudError}`);
+    }
   };
 
   // Handlers for Featured Info (Comunicados & Informações em Destaque)
@@ -365,6 +416,15 @@ export default function App() {
         onToggleFeaturedInfoActive={handleToggleFeaturedInfoActiveProtected}
         onDeleteFeaturedInfo={handleDeleteFeaturedInfoProtected}
         onChangeAdminPin={changeAdminPin}
+        isCloudAdmin={isCloudAdmin}
+        cloudUserEmail={cloudUser?.email || null}
+        isSigningInCloud={isSigningInCloud}
+        cloudAuthError={cloudAuthError}
+        onSignInCloud={handleSignInCloud}
+        onSignOutCloud={signOutCloud}
+        isCatalogCloudInitialized={isCloudInitialized}
+        isCloudSyncing={isCloudSyncing}
+        onSyncAllToCloud={handleSyncAllToCloud}
       />
 
       {/* CRUD Create/Edit Product Modal */}

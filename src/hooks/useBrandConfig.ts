@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { optimizeImage } from '../utils/imageOptimizer';
-import { 
-  saveBrandLogoToDB, 
-  loadBrandLogoFromDB, 
-  BRAND_LOGO_LS_KEY, 
-  BRAND_INFO_LS_KEY 
+import { auth } from '../firebase';
+import { useFirebaseAuth } from '../contexts/FirebaseAuthContext';
+import {
+  saveBrandLogoToDB,
+  loadBrandLogoFromDB,
+  BRAND_LOGO_LS_KEY,
+  BRAND_INFO_LS_KEY,
 } from '../utils/persistentDB';
+import { subscribeCloudBrandLogo, saveCloudBrandLogo } from '../utils/cloudSync';
 
 export interface BrandConfig {
   logoImage: string | null;
@@ -22,6 +25,8 @@ const DEFAULT_BRAND_CONFIG: BrandConfig = {
 };
 
 export function useBrandConfig() {
+  const { isCloudAdmin } = useFirebaseAuth();
+
   const [config, setConfig] = useState<BrandConfig>(() => {
     try {
       const savedLogo = typeof window !== 'undefined' ? localStorage.getItem(BRAND_LOGO_LS_KEY) : null;
@@ -38,19 +43,48 @@ export function useBrandConfig() {
     }
   });
 
-  // Reconcile with IndexedDB on mount (bulletproof persistence)
+  const cloudLogoReceivedRef = useRef(false);
+  const logoRef = useRef<string | null>(config.logoImage);
+
+  useEffect(() => {
+    logoRef.current = config.logoImage;
+  }, [config.logoImage]);
+
+  // Reconcile with IndexedDB on mount (offline cache)
   useEffect(() => {
     let isMounted = true;
-    loadBrandLogoFromDB().then((logo) => {
-      if (isMounted && logo && logo !== config.logoImage) {
-        setConfig((prev) => ({ ...prev, logoImage: logo }));
+    loadBrandLogoFromDB()
+      .then((logo) => {
+        if (isMounted && !cloudLogoReceivedRef.current && logo && logo !== logoRef.current) {
+          logoRef.current = logo;
+          setConfig((prev) => ({ ...prev, logoImage: logo }));
+        }
+      })
+      .catch((err) => {
+        console.warn('Erro ao sincronizar logótipo do IndexedDB:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Subscribe to Firestore cloud brand logo
+  useEffect(() => {
+    let isMounted = true;
+    const unsubscribe = subscribeCloudBrandLogo((cloudLogo) => {
+      if (!isMounted) return;
+      cloudLogoReceivedRef.current = true;
+      if (cloudLogo !== logoRef.current) {
+        logoRef.current = cloudLogo;
+        setConfig((prev) => ({ ...prev, logoImage: cloudLogo }));
+        void saveBrandLogoToDB(cloudLogo);
       }
-    }).catch((err) => {
-      console.warn('Erro ao sincronizar logótipo do IndexedDB:', err);
     });
 
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, []);
 
@@ -59,13 +93,17 @@ export function useBrandConfig() {
     const handleBrandEvent = (e: Event) => {
       const customEvent = e as CustomEvent<{ logo?: string | null }>;
       if (customEvent.detail && 'logo' in customEvent.detail) {
-        setConfig((prev) => ({ ...prev, logoImage: customEvent.detail.logo || null }));
+        const nextLogo = customEvent.detail.logo || null;
+        logoRef.current = nextLogo;
+        setConfig((prev) => ({ ...prev, logoImage: nextLogo }));
       }
     };
 
     const handleStorageEvent = (e: StorageEvent) => {
       if (e.key === BRAND_LOGO_LS_KEY) {
-        setConfig((prev) => ({ ...prev, logoImage: e.newValue || null }));
+        const nextLogo = e.newValue || null;
+        logoRef.current = nextLogo;
+        setConfig((prev) => ({ ...prev, logoImage: nextLogo }));
       }
     };
 
@@ -78,6 +116,12 @@ export function useBrandConfig() {
     };
   }, []);
 
+  const syncLogoToCloud = useCallback(async () => {
+    if (!auth.currentUser || !isCloudAdmin || !logoRef.current) return false;
+    await saveCloudBrandLogo(logoRef.current);
+    return true;
+  }, [isCloudAdmin]);
+
   const updateLogo = async (fileOrUrl: File | string): Promise<string> => {
     try {
       let finalUrl = '';
@@ -87,8 +131,18 @@ export function useBrandConfig() {
         finalUrl = await optimizeImage(fileOrUrl, 1200, 1200, 0.92);
       }
 
+      logoRef.current = finalUrl;
       setConfig((prev) => ({ ...prev, logoImage: finalUrl }));
       await saveBrandLogoToDB(finalUrl);
+
+      if (auth.currentUser && isCloudAdmin) {
+        try {
+          await saveCloudBrandLogo(finalUrl);
+        } catch (cloudErr) {
+          console.warn('Falha ao gravar logótipo na nuvem:', cloudErr);
+        }
+      }
+
       return finalUrl;
     } catch (err) {
       console.error('Falha ao gravar logótipo personalizado:', err);
@@ -97,8 +151,17 @@ export function useBrandConfig() {
   };
 
   const removeCustomLogo = async (): Promise<void> => {
+    logoRef.current = null;
     setConfig((prev) => ({ ...prev, logoImage: null }));
     await saveBrandLogoToDB(null);
+
+    if (auth.currentUser && isCloudAdmin) {
+      try {
+        await saveCloudBrandLogo(null);
+      } catch (cloudErr) {
+        console.warn('Falha ao remover logótipo na nuvem:', cloudErr);
+      }
+    }
   };
 
   return {
@@ -108,5 +171,6 @@ export function useBrandConfig() {
     subSlogan: config.subSlogan,
     updateLogo,
     removeCustomLogo,
+    syncLogoToCloud,
   };
 }

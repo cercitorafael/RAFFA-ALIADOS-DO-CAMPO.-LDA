@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { FirebaseAuthProvider } from './contexts/FirebaseAuthContext';
 import './index.css';
 
 // Register Service Worker for full offline availability of catalog and featured info
@@ -38,6 +40,10 @@ console.error = (...args: unknown[]) => {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <FirebaseAuthProvider>
+        <App />
+      </FirebaseAuthProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

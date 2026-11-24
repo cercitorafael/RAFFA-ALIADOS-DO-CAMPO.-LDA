@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ProductItem } from '../types';
 import { PRODUCTS_DATA } from '../data/agroData';
+import { auth } from '../firebase';
+import { useFirebaseAuth } from '../contexts/FirebaseAuthContext';
 import {
   loadProductsFromStorage,
   saveProductsToStorage,
@@ -13,15 +15,30 @@ import {
   loadUserProductsFromVault,
   loadDeletedIdsFromStorage,
   clearDeletedIds,
+  replaceLocalCatalogFromCloud,
   CATALOG_INITIALIZED_KEY,
   CATALOG_LS_KEY,
   USER_VAULT_LS_KEY,
   DELETED_IDS_LS_KEY,
 } from '../utils/persistentDB';
+import {
+  subscribeCloudProducts,
+  upsertCloudProduct,
+  deleteCloudProduct,
+  deleteMultipleCloudProducts,
+  seedAndSyncCatalogToCloud,
+} from '../utils/cloudSync';
+
+export interface CloudOpResult {
+  syncedToCloud: boolean;
+  cloudError?: string;
+}
 
 export function useProductsCatalog() {
+  const { isCloudAdmin } = useFirebaseAuth();
+
   const [products, setProducts] = useState<ProductItem[]>(() => {
-    // Initial synchronous read from fast LocalStorage cache while IndexedDB loads
+    // Initial synchronous read from fast LocalStorage cache while IndexedDB & Firestore load
     try {
       const deletedIds = loadDeletedIdsFromStorage();
       const userVault = loadUserVaultFromLocalStorage();
@@ -56,15 +73,26 @@ export function useProductsCatalog() {
   });
 
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isCloudInitialized, setIsCloudInitialized] = useState(false);
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [lastCloudError, setLastCloudError] = useState<string | null>(null);
+
+  const productsRef = useRef<ProductItem[]>(products);
   const isFirstRender = useRef(true);
   const hasMutatedRef = useRef(false);
+  const cloudInitializedRef = useRef(false);
 
-  // Load full-resolution unlimited catalog from IndexedDB on startup
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
+
+  // Load full-resolution unlimited catalog from IndexedDB on startup (offline fallback)
   useEffect(() => {
     let isMounted = true;
     loadProductsFromStorage()
       .then((savedProducts) => {
-        if (isMounted && savedProducts && !hasMutatedRef.current) {
+        if (isMounted && savedProducts && !hasMutatedRef.current && !cloudInitializedRef.current) {
+          productsRef.current = savedProducts;
           setProducts(savedProducts);
         }
         if (isMounted) setIsLoaded(true);
@@ -79,11 +107,34 @@ export function useProductsCatalog() {
     };
   }, []);
 
+  // Real-time Firestore cloud subscription (single source of truth across all devices & Vercel)
+  useEffect(() => {
+    let isMounted = true;
+    const unsubscribe = subscribeCloudProducts((cloudProducts, cloudInit) => {
+      if (!isMounted) return;
+      cloudInitializedRef.current = cloudInit;
+      setIsCloudInitialized(cloudInit);
+
+      if (cloudInit) {
+        productsRef.current = cloudProducts;
+        setProducts(cloudProducts);
+        void replaceLocalCatalogFromCloud(cloudProducts);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
   // Multi-tab and custom event synchronization across browser tabs
   useEffect(() => {
     const handleSync = () => {
+      if (cloudInitializedRef.current) return;
       loadProductsFromStorage()
         .then((latest) => {
+          productsRef.current = latest;
           setProducts(latest);
         })
         .catch(() => {
@@ -98,7 +149,9 @@ export function useProductsCatalog() {
             userVault.forEach((item) => {
               if (!deletedIds.has(item.id)) mergedMap.set(item.id, { ...item, isUserCreated: true });
             });
-            setProducts(Array.from(mergedMap.values()));
+            const list = Array.from(mergedMap.values());
+            productsRef.current = list;
+            setProducts(list);
           }
         });
     };
@@ -121,7 +174,7 @@ export function useProductsCatalog() {
     };
   }, []);
 
-  // Continuous auto-save whenever products list updates after initial hydration
+  // Continuous auto-save to IndexedDB offline cache after initial hydration
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -133,36 +186,90 @@ export function useProductsCatalog() {
     void saveProductsToStorage(products);
   }, [products, isLoaded]);
 
-  // Add new product (persists permanently in unlimited IndexedDB + fast cache)
-  const addProduct = useCallback((newProduct: Omit<ProductItem, 'id'> & { id?: string }) => {
-    hasMutatedRef.current = true;
-    const id =
-      newProduct.id || `prod-custom-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-    const productWithId: ProductItem = {
-      ...newProduct,
-      id,
-      isUserCreated: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+  // Publish full local catalog to Firestore (used on initial cloud seed or explicit sync button)
+  const syncAllToCloud = useCallback(
+    async (overrideProducts?: ProductItem[]): Promise<CloudOpResult> => {
+      if (!auth.currentUser || !isCloudAdmin) {
+        return {
+          syncedToCloud: false,
+          cloudError: 'Sessão Google de administrador não iniciada.',
+        };
+      }
 
-    void saveUserProductToVault(productWithId);
+      setIsCloudSyncing(true);
+      setLastCloudError(null);
+      try {
+        const list = overrideProducts ?? productsRef.current;
+        await seedAndSyncCatalogToCloud(list);
+        cloudInitializedRef.current = true;
+        setIsCloudInitialized(true);
+        return { syncedToCloud: true };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Erro ao sincronizar catálogo na nuvem.';
+        setLastCloudError(msg);
+        return { syncedToCloud: false, cloudError: msg };
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    },
+    [isCloudAdmin]
+  );
 
-    setProducts((prev) => {
-      const updated = [productWithId, ...prev.filter((p) => p.id !== id)];
-      void saveProductsToStorage(updated);
-      return updated;
-    });
+  // Add new product (IndexedDB + Firestore cloud)
+  const addProduct = useCallback(
+    async (
+      newProduct: Omit<ProductItem, 'id'> & { id?: string }
+    ): Promise<{ product: ProductItem } & CloudOpResult> => {
+      hasMutatedRef.current = true;
+      const id =
+        newProduct.id || `prod-custom-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const productWithId: ProductItem = {
+        ...newProduct,
+        id,
+        isUserCreated: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
 
-    return productWithId;
-  }, []);
+      const nextList = [productWithId, ...productsRef.current.filter((p) => p.id !== id)];
+      productsRef.current = nextList;
+      setProducts(nextList);
 
-  // Update existing product
-  const updateProduct = useCallback((id: string, updatedData: Partial<ProductItem>) => {
-    hasMutatedRef.current = true;
-    setProducts((prev) => {
+      await saveUserProductToVault(productWithId);
+      await saveProductsToStorage(nextList);
+
+      if (auth.currentUser && isCloudAdmin) {
+        setIsCloudSyncing(true);
+        setLastCloudError(null);
+        try {
+          if (!cloudInitializedRef.current) {
+            await seedAndSyncCatalogToCloud(nextList);
+            cloudInitializedRef.current = true;
+            setIsCloudInitialized(true);
+          } else {
+            await upsertCloudProduct(productWithId);
+          }
+          return { product: productWithId, syncedToCloud: true };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Falha ao guardar produto na nuvem.';
+          setLastCloudError(msg);
+          return { product: productWithId, syncedToCloud: false, cloudError: msg };
+        } finally {
+          setIsCloudSyncing(false);
+        }
+      }
+
+      return { product: productWithId, syncedToCloud: false };
+    },
+    [isCloudAdmin]
+  );
+
+  // Update existing product (IndexedDB + Firestore cloud)
+  const updateProduct = useCallback(
+    async (id: string, updatedData: Partial<ProductItem>): Promise<CloudOpResult> => {
+      hasMutatedRef.current = true;
       let updatedProduct: ProductItem | null = null;
-      const updated = prev.map((item) => {
+      const nextList = productsRef.current.map((item) => {
         if (item.id === id) {
           updatedProduct = {
             ...item,
@@ -178,42 +285,144 @@ export function useProductsCatalog() {
         return item;
       });
 
+      productsRef.current = nextList;
+      setProducts(nextList);
+
       if (updatedProduct) {
-        void saveUserProductToVault(updatedProduct);
+        await saveUserProductToVault(updatedProduct);
       }
-      void saveProductsToStorage(updated);
-      return updated;
-    });
-  }, []);
+      await saveProductsToStorage(nextList);
 
-  // Delete a single product permanently (stays deleted forever)
-  const deleteProduct = useCallback(async (id: string) => {
-    hasMutatedRef.current = true;
-    setProducts((prev) => prev.filter((item) => item.id !== id));
-    await deleteProductPermanently(id);
-  }, []);
+      if (updatedProduct && auth.currentUser && isCloudAdmin) {
+        setIsCloudSyncing(true);
+        setLastCloudError(null);
+        try {
+          if (!cloudInitializedRef.current) {
+            await seedAndSyncCatalogToCloud(nextList);
+            cloudInitializedRef.current = true;
+            setIsCloudInitialized(true);
+          } else {
+            await upsertCloudProduct(updatedProduct);
+          }
+          return { syncedToCloud: true };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Falha ao atualizar produto na nuvem.';
+          setLastCloudError(msg);
+          return { syncedToCloud: false, cloudError: msg };
+        } finally {
+          setIsCloudSyncing(false);
+        }
+      }
 
-  // Delete all products permanently (stays empty until user adds or restores)
-  const deleteAllProducts = useCallback(async () => {
+      return { syncedToCloud: false };
+    },
+    [isCloudAdmin]
+  );
+
+  // Delete a single product permanently (IndexedDB + Firestore cloud)
+  const deleteProduct = useCallback(
+    async (id: string): Promise<CloudOpResult> => {
+      hasMutatedRef.current = true;
+      const nextList = productsRef.current.filter((item) => item.id !== id);
+      productsRef.current = nextList;
+      setProducts(nextList);
+      await deleteProductPermanently(id);
+
+      if (auth.currentUser && isCloudAdmin) {
+        setIsCloudSyncing(true);
+        setLastCloudError(null);
+        try {
+          if (!cloudInitializedRef.current) {
+            await seedAndSyncCatalogToCloud(nextList);
+            cloudInitializedRef.current = true;
+            setIsCloudInitialized(true);
+          } else {
+            await deleteCloudProduct(id);
+          }
+          return { syncedToCloud: true };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Falha ao eliminar produto na nuvem.';
+          setLastCloudError(msg);
+          return { syncedToCloud: false, cloudError: msg };
+        } finally {
+          setIsCloudSyncing(false);
+        }
+      }
+
+      return { syncedToCloud: false };
+    },
+    [isCloudAdmin]
+  );
+
+  // Delete all products permanently
+  const deleteAllProducts = useCallback(async (): Promise<CloudOpResult> => {
     hasMutatedRef.current = true;
-    const allIds = products.map((p) => p.id);
+    const allIds = productsRef.current.map((p) => p.id);
+    productsRef.current = [];
     setProducts([]);
     await clearAllProductsFromStorage(allIds);
-  }, [products]);
+
+    if (auth.currentUser && isCloudAdmin) {
+      setIsCloudSyncing(true);
+      setLastCloudError(null);
+      try {
+        await seedAndSyncCatalogToCloud([]);
+        cloudInitializedRef.current = true;
+        setIsCloudInitialized(true);
+        return { syncedToCloud: true };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Falha ao esvaziar catálogo na nuvem.';
+        setLastCloudError(msg);
+        return { syncedToCloud: false, cloudError: msg };
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    }
+
+    return { syncedToCloud: false };
+  }, [isCloudAdmin]);
 
   // Delete multiple selected products permanently
-  const deleteMultipleProducts = useCallback(async (idsToDelete: string[]) => {
-    hasMutatedRef.current = true;
-    const idSet = new Set(idsToDelete);
-    setProducts((prev) => prev.filter((p) => !idSet.has(p.id)));
-    await deleteMultipleProductsPermanently(idsToDelete);
-  }, []);
+  const deleteMultipleProducts = useCallback(
+    async (idsToDelete: string[]): Promise<CloudOpResult> => {
+      hasMutatedRef.current = true;
+      const idSet = new Set(idsToDelete);
+      const nextList = productsRef.current.filter((p) => !idSet.has(p.id));
+      productsRef.current = nextList;
+      setProducts(nextList);
+      await deleteMultipleProductsPermanently(idsToDelete);
+
+      if (auth.currentUser && isCloudAdmin) {
+        setIsCloudSyncing(true);
+        setLastCloudError(null);
+        try {
+          if (!cloudInitializedRef.current) {
+            await seedAndSyncCatalogToCloud(nextList);
+            cloudInitializedRef.current = true;
+            setIsCloudInitialized(true);
+          } else {
+            await deleteMultipleCloudProducts(idsToDelete);
+          }
+          return { syncedToCloud: true };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Falha ao eliminar produtos na nuvem.';
+          setLastCloudError(msg);
+          return { syncedToCloud: false, cloudError: msg };
+        } finally {
+          setIsCloudSyncing(false);
+        }
+      }
+
+      return { syncedToCloud: false };
+    },
+    [isCloudAdmin]
+  );
 
   const duplicateProduct = useCallback(
-    (id: string) => {
+    async (id: string): Promise<ProductItem | undefined> => {
       hasMutatedRef.current = true;
-      const target = products.find((p) => p.id === id);
-      if (!target) return;
+      const target = productsRef.current.find((p) => p.id === id);
+      if (!target) return undefined;
       const duplicated: ProductItem = {
         ...target,
         id: `prod-copy-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -224,54 +433,91 @@ export function useProductsCatalog() {
         updatedAt: Date.now(),
       };
 
-      void saveUserProductToVault(duplicated);
-      setProducts((prev) => {
-        const updated = [duplicated, ...prev];
-        void saveProductsToStorage(updated);
-        return updated;
-      });
+      const nextList = [duplicated, ...productsRef.current];
+      productsRef.current = nextList;
+      setProducts(nextList);
+
+      await saveUserProductToVault(duplicated);
+      await saveProductsToStorage(nextList);
+
+      if (auth.currentUser && isCloudAdmin) {
+        setIsCloudSyncing(true);
+        try {
+          if (!cloudInitializedRef.current) {
+            await seedAndSyncCatalogToCloud(nextList);
+            cloudInitializedRef.current = true;
+            setIsCloudInitialized(true);
+          } else {
+            await upsertCloudProduct(duplicated);
+          }
+        } catch (err) {
+          setLastCloudError(err instanceof Error ? err.message : 'Falha ao duplicar produto na nuvem.');
+        } finally {
+          setIsCloudSyncing(false);
+        }
+      }
 
       return duplicated;
     },
-    [products]
+    [isCloudAdmin]
   );
 
-  const resetToDefault = useCallback(async (preserveUserCreated = true) => {
-    hasMutatedRef.current = true;
-    clearDeletedIds();
+  const resetToDefault = useCallback(
+    async (preserveUserCreated = true): Promise<CloudOpResult> => {
+      hasMutatedRef.current = true;
+      clearDeletedIds();
 
-    if (preserveUserCreated) {
-      const userVault = await loadUserProductsFromVault();
-      const userItemsMap = new Map<string, ProductItem>();
-      userVault.forEach((item) => userItemsMap.set(item.id, item));
+      let nextList: ProductItem[];
+      if (preserveUserCreated) {
+        const userVault = await loadUserProductsFromVault();
+        const userItemsMap = new Map<string, ProductItem>();
+        userVault.forEach((item) => userItemsMap.set(item.id, item));
+        nextList = [...userVault, ...PRODUCTS_DATA.filter((p) => !userItemsMap.has(p.id))];
+      } else {
+        nextList = PRODUCTS_DATA;
+      }
 
-      const merged = [...userVault, ...PRODUCTS_DATA.filter((p) => !userItemsMap.has(p.id))];
-      setProducts(merged);
-      await saveProductsToStorage(merged);
-    } else {
-      setProducts(PRODUCTS_DATA);
-      await saveProductsToStorage(PRODUCTS_DATA);
-    }
-  }, []);
+      productsRef.current = nextList;
+      setProducts(nextList);
+      await saveProductsToStorage(nextList);
 
-  const importCatalog = useCallback((importedProducts: ProductItem[]) => {
-    if (!Array.isArray(importedProducts) || importedProducts.length === 0) {
-      throw new Error('Formato de ficheiro inválido. Deve ser uma lista de produtos.');
-    }
-    hasMutatedRef.current = true;
-    clearDeletedIds();
-    const normalized = importedProducts.map((p) => ({
-      ...p,
-      isUserCreated: true,
-      updatedAt: Date.now(),
-    }));
-    setProducts(normalized);
-    void saveProductsToStorage(normalized);
-  }, []);
+      if (auth.currentUser && isCloudAdmin) {
+        return await syncAllToCloud(nextList);
+      }
+
+      return { syncedToCloud: false };
+    },
+    [isCloudAdmin, syncAllToCloud]
+  );
+
+  const importCatalog = useCallback(
+    async (importedProducts: ProductItem[]): Promise<CloudOpResult> => {
+      if (!Array.isArray(importedProducts) || importedProducts.length === 0) {
+        throw new Error('Formato de ficheiro inválido. Deve ser uma lista de produtos.');
+      }
+      hasMutatedRef.current = true;
+      clearDeletedIds();
+      const normalized = importedProducts.map((p) => ({
+        ...p,
+        isUserCreated: true,
+        updatedAt: Date.now(),
+      }));
+      productsRef.current = normalized;
+      setProducts(normalized);
+      await saveProductsToStorage(normalized);
+
+      if (auth.currentUser && isCloudAdmin) {
+        return await syncAllToCloud(normalized);
+      }
+
+      return { syncedToCloud: false };
+    },
+    [isCloudAdmin, syncAllToCloud]
+  );
 
   const exportCatalogJSON = useCallback(() => {
     const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-      JSON.stringify(products, null, 2)
+      JSON.stringify(productsRef.current, null, 2)
     )}`;
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', jsonString);
@@ -282,11 +528,15 @@ export function useProductsCatalog() {
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-  }, [products]);
+  }, []);
 
   return {
     products,
     isLoaded,
+    isCloudInitialized,
+    isCloudSyncing,
+    lastCloudError,
+    syncAllToCloud,
     addProduct,
     updateProduct,
     deleteProduct,

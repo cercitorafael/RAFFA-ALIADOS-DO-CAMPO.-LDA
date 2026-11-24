@@ -1,0 +1,358 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Agricultural seed, fertilizer, agrochemical, or equipment item in the store catalog",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "enum": ["horticolas", "milho", "feijao", "arroz", "gergelim", "insumos", "agroquimicos", "equipamentos"]
+        },
+        "subCategory": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "categoryLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "tagline": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "varieties": {
+          "type": "array",
+          "description": "Available cultivars or varieties (max 30 entries)"
+        },
+        "specs": {
+          "type": "object",
+          "description": "Technical agronomic specifications"
+        },
+        "image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 750000
+        },
+        "badge": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "popular": {
+          "type": "boolean"
+        },
+        "priceMzn": {
+          "type": "number"
+        },
+        "priceUnit": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "stockStatus": {
+          "type": "string",
+          "enum": ["available", "low", "out_of_stock"]
+        },
+        "isUserCreated": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "name", "category", "categoryLabel", "tagline", "description", "image", "createdAt", "updatedAt"]
+    },
+    "FeaturedInfo": {
+      "title": "FeaturedInfo",
+      "description": "Highlighted campaign notice or seasonal agricultural bulletin",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "enum": ["sementes", "campanha", "alerta", "comunicado", "preco", "geral"]
+        },
+        "categoryLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "badgeText": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "highlightStyle": {
+          "type": "string",
+          "enum": ["emerald", "amber", "red", "blue"]
+        },
+        "actionType": {
+          "type": "string",
+          "enum": ["whatsapp", "quote", "none"]
+        },
+        "actionText": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "actionUrlOrMessage": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "imageUrl": {
+          "type": "string",
+          "maxLength": 750000
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "dateText": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "priorityOrder": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "title", "category", "categoryLabel", "summary", "highlightStyle", "actionType", "isActive", "createdAt", "updatedAt"]
+    },
+    "BrandSetting": {
+      "title": "BrandSetting",
+      "description": "Custom brand logo and visual settings",
+      "type": "object",
+      "properties": {
+        "logoImage": {
+          "type": "string",
+          "maxLength": 750000
+        },
+        "companyName": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "slogan": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "subSlogan": {
+          "type": "string",
+          "maxLength": 250
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["updatedAt"]
+    },
+    "CatalogMeta": {
+      "title": "CatalogMeta",
+      "description": "Cloud initialization marker for catalog and featured collections",
+      "type": "object",
+      "properties": {
+        "initialized": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["initialized", "updatedAt"]
+    },
+    "Quote": {
+      "title": "Quote",
+      "description": "Customer quote request or consolidated cart order",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "selectedCategory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "selectedProduct": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "areaOrQuantity": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "contacted", "resolved"]
+        },
+        "totalMzn": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["quote_modal", "cart_order"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "phone", "location", "selectedCategory", "selectedProduct", "areaOrQuantity", "status", "createdAt"]
+    },
+    "ContactMessage": {
+      "title": "ContactMessage",
+      "description": "Direct customer inquiry message",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2500
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "resolved"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "message", "status", "createdAt"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Explicitly authorized admin user record",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Store product catalog synced across devices and Vercel deployments"
+    },
+    "/featured_info/{infoId}": {
+      "schema": { "$ref": "#/entities/FeaturedInfo" },
+      "description": "Campaign announcements and highlighted bulletins"
+    },
+    "/brand_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/BrandSetting" },
+      "description": "Company logo and branding configuration"
+    },
+    "/meta/{metaId}": {
+      "schema": { "$ref": "#/entities/CatalogMeta" },
+      "description": "Cloud initialization flags for catalog and featured collections"
+    },
+    "/quotes/{quoteId}": {
+      "schema": { "$ref": "#/entities/Quote" },
+      "description": "Customer quote and order submissions (PII protected for admins only)"
+    },
+    "/contact_messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ContactMessage" },
+      "description": "Customer inquiry messages (PII protected for admins only)"
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Admin authorization list"
+    }
+  }
+}
