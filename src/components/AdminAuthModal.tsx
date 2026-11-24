@@ -22,7 +22,14 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   const [error, setError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const { user, isCloudAdmin, isSigningIn, signInWithGoogle } = useFirebaseAuth();
+  const {
+    user,
+    isCloudAdmin,
+    isSigningIn,
+    signInWithGoogle,
+    unauthorizedDomainHost,
+    firebaseProjectId,
+  } = useFirebaseAuth();
 
   useEffect(() => {
     if (isOpen) {
@@ -233,27 +240,44 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
           </button>
 
           {/* Subtle Cloud Sync Status */}
-          <div className="mt-4 pt-3 border-t border-stone-100 flex items-center justify-between gap-2 text-[11px]">
-            {isCloudAdmin ? (
-              <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
-                <Cloud className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">Nuvem ativa ({user?.email})</span>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-1.5 text-amber-700 font-medium">
-                  <CloudOff className="w-3.5 h-3.5 shrink-0" />
-                  <span>Nuvem não ligada</span>
+          <div className="mt-4 pt-3 border-t border-stone-100 space-y-2 text-[11px]">
+            <div className="flex items-center justify-between gap-2">
+              {isCloudAdmin ? (
+                <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+                  <Cloud className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Nuvem ativa ({user?.email})</span>
                 </div>
-                <button
-                  type="button"
-                  disabled={isSigningIn}
-                  onClick={() => void signInWithGoogle()}
-                  className="text-emerald-800 hover:text-emerald-950 font-bold underline cursor-pointer shrink-0 disabled:opacity-50"
+              ) : (
+                <>
+                  <div className="flex items-center gap-1.5 text-amber-700 font-medium">
+                    <CloudOff className="w-3.5 h-3.5 shrink-0" />
+                    <span>Nuvem não ligada</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isSigningIn}
+                    onClick={() => void signInWithGoogle()}
+                    className="text-emerald-800 hover:text-emerald-950 font-bold underline cursor-pointer shrink-0 disabled:opacity-50"
+                  >
+                    {isSigningIn ? 'A ligar...' : 'Ligar Google'}
+                  </button>
+                </>
+              )}
+            </div>
+            {unauthorizedDomainHost && firebaseProjectId && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-2 text-[10px] text-red-900 space-y-1">
+                <div>
+                  Autorize <strong>{unauthorizedDomainHost}</strong> 1 vez no Firebase:
+                </div>
+                <a
+                  href={`https://console.firebase.google.com/project/${firebaseProjectId}/authentication/settings`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block font-bold underline text-emerald-900"
                 >
-                  {isSigningIn ? 'A ligar...' : 'Ligar Google'}
-                </button>
-              </>
+                  Abrir Authorized Domains no Firebase →
+                </a>
+              </div>
             )}
           </div>
         </div>

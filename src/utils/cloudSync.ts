@@ -268,18 +268,46 @@ export async function seedAndSyncCatalogToCloud(products: ProductItem[]): Promis
 
   try {
     const existingSnap = await getDocs(collection(db, 'products'));
+    const existingIds = new Set(existingSnap.docs.map((d) => d.id));
     const currentIds = new Set(products.map((p) => sanitizeDocId(p.id)));
 
-    // Upsert all current products (ensuring compressed safe images)
-    for (const p of products) {
-      await upsertCloudProduct(p);
+    const prepared = await Promise.all(
+      products.map(async (p) => {
+        const id = sanitizeDocId(p.id);
+        const safeImage = await ensureFirestoreSafeImage(p.image);
+        return { id, fields: buildProductFields(p, safeImage) };
+      })
+    );
+
+    const BATCH_CHUNK = 10;
+    for (let i = 0; i < prepared.length; i += BATCH_CHUNK) {
+      const chunk = prepared.slice(i, i + BATCH_CHUNK);
+      const batch = writeBatch(db);
+      for (const item of chunk) {
+        const docRef = doc(db, 'products', item.id);
+        if (!existingIds.has(item.id)) {
+          batch.set(docRef, {
+            id: item.id,
+            ...item.fields,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          batch.update(docRef, {
+            ...item.fields,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+      await batch.commit();
     }
 
     // Delete products removed locally
     const toDelete = existingSnap.docs.filter((d) => !currentIds.has(d.id));
-    if (toDelete.length > 0) {
+    for (let i = 0; i < toDelete.length; i += 200) {
+      const chunk = toDelete.slice(i, i + 200);
       const batch = writeBatch(db);
-      toDelete.forEach((d) => batch.delete(d.ref));
+      chunk.forEach((d) => batch.delete(d.ref));
       await batch.commit();
     }
 
@@ -417,10 +445,38 @@ export async function syncFeaturedInfoToCloud(items: FeaturedInfoItem[]): Promis
   if (!auth.currentUser) return;
   try {
     const existingSnap = await getDocs(collection(db, 'featured_info'));
+    const existingIds = new Set(existingSnap.docs.map((d) => d.id));
     const currentIds = new Set(items.map((i) => sanitizeDocId(i.id)));
 
-    for (const item of items) {
-      await upsertCloudFeaturedInfo(item);
+    const prepared = await Promise.all(
+      items.map(async (item) => {
+        const id = sanitizeDocId(item.id);
+        const safeImageUrl = item.imageUrl ? await ensureFirestoreSafeImage(item.imageUrl) : undefined;
+        return { id, fields: buildFeaturedFields(item, safeImageUrl) };
+      })
+    );
+
+    const BATCH_CHUNK = 10;
+    for (let i = 0; i < prepared.length; i += BATCH_CHUNK) {
+      const chunk = prepared.slice(i, i + BATCH_CHUNK);
+      const batch = writeBatch(db);
+      for (const entry of chunk) {
+        const docRef = doc(db, 'featured_info', entry.id);
+        if (!existingIds.has(entry.id)) {
+          batch.set(docRef, {
+            id: entry.id,
+            ...entry.fields,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          batch.update(docRef, {
+            ...entry.fields,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+      await batch.commit();
     }
 
     const toDelete = existingSnap.docs.filter((d) => !currentIds.has(d.id));

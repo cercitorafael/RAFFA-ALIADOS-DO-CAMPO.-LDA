@@ -73,6 +73,7 @@ export function useProductsCatalog() {
   });
 
   const [isLoaded, setIsLoaded] = useState(false);
+  const [hasCloudLoaded, setHasCloudLoaded] = useState(false);
   const [isCloudInitialized, setIsCloudInitialized] = useState(false);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
   const [lastCloudError, setLastCloudError] = useState<string | null>(null);
@@ -113,6 +114,7 @@ export function useProductsCatalog() {
     const unsubscribe = subscribeCloudProducts((cloudProducts, cloudInit) => {
       if (!isMounted) return;
       cloudInitializedRef.current = cloudInit;
+      setHasCloudLoaded(true);
       setIsCloudInitialized(cloudInit);
 
       if (cloudInit) {
@@ -533,6 +535,7 @@ export function useProductsCatalog() {
   return {
     products,
     isLoaded,
+    hasCloudLoaded,
     isCloudInitialized,
     isCloudSyncing,
     lastCloudError,

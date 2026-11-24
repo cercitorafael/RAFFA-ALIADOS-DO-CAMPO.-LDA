@@ -34,7 +34,9 @@ import {
   CloudOff,
   RefreshCw,
   LogIn,
-  LogOut
+  LogOut,
+  ExternalLink,
+  Copy as CopyIcon
 } from 'lucide-react';
 import { ContactMessageRecord, FeaturedInfoItem, ProductItem, QuoteRecord } from '../types';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
@@ -80,6 +82,8 @@ interface AdminCatalogModalProps {
   cloudUserEmail?: string | null;
   isSigningInCloud?: boolean;
   cloudAuthError?: string | null;
+  unauthorizedDomainHost?: string | null;
+  firebaseProjectId?: string;
   onSignInCloud?: () => Promise<void>;
   onSignOutCloud?: () => Promise<void>;
   isCatalogCloudInitialized?: boolean;
@@ -110,12 +114,15 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   cloudUserEmail = null,
   isSigningInCloud = false,
   cloudAuthError = null,
+  unauthorizedDomainHost = null,
+  firebaseProjectId = '',
   onSignInCloud,
   onSignOutCloud,
   isCatalogCloudInitialized = false,
   isCloudSyncing = false,
   onSyncAllToCloud,
 }) => {
+  const [domainCopied, setDomainCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'catalog' | 'featured' | 'history' | 'security'>('catalog');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
@@ -496,12 +503,12 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
                 {isCloudAdmin ? (
                   <>
                     <span className="font-bold text-emerald-900">
-                      Nuvem Ligada ({cloudUserEmail})
+                      Nuvem Ativa ({cloudUserEmail})
                     </span>
                     <span className="text-emerald-800 ml-1.5">
                       {!isCatalogCloudInitialized
-                        ? '— Clique em "Publicar na Nuvem" para gravar todas as suas edições locais para todos no Vercel.'
-                        : '— Todas as alterações são guardadas na nuvem e sincronizadas em qualquer dispositivo.'}
+                        ? '— A sincronizar automaticamente as suas alterações locais com a nuvem...'
+                        : '— Tudo o que adicionar, editar ou eliminar é atualizado no site automaticamente assim que gravar.'}
                     </span>
                   </>
                 ) : (
@@ -510,13 +517,45 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
                       Modo Apenas Local neste navegador:
                     </span>
                     <span className="text-amber-900 ml-1">
-                      Entre com o Google Admin ({COMPANY_INFO.email}) para guardar permanentemente no Vercel e publicar para todos os clientes.
+                      Entre com o Google Admin ({COMPANY_INFO.email}) para que cada gravação atualize automaticamente o site no Vercel para todos.
                     </span>
                   </>
                 )}
                 {cloudAuthError && (
-                  <div className="mt-1 text-[11px] font-bold text-red-700">
-                    {cloudAuthError}
+                  <div className="mt-1.5 text-[11px] font-bold text-red-700 space-y-1.5">
+                    <div>{cloudAuthError}</div>
+                    {unauthorizedDomainHost && (
+                      <div className="bg-white/90 border border-red-200 rounded-xl p-2.5 text-stone-800 font-medium space-y-2">
+                        <div>
+                          Só precisa de fazer isto <strong>1 vez</strong>: abra as definições do Firebase abaixo, em <strong>Authorized domains</strong> clique em <strong>Add domain</strong> e adicione <code className="bg-stone-100 px-1.5 py-0.5 rounded font-bold text-stone-900">{unauthorizedDomainHost}</code>.
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard?.writeText(unauthorizedDomainHost);
+                              setDomainCopied(true);
+                              setTimeout(() => setDomainCopied(false), 2500);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-[11px] font-bold cursor-pointer"
+                          >
+                            <CopyIcon className="w-3 h-3" />
+                            <span>{domainCopied ? 'Domínio Copiado!' : `Copiar "${unauthorizedDomainHost}"`}</span>
+                          </button>
+                          {firebaseProjectId && (
+                            <a
+                              href={`https://console.firebase.google.com/project/${firebaseProjectId}/authentication/settings`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 text-[11px] font-black"
+                            >
+                              <span>Abrir Firebase Console (Authorized Domains)</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -27,6 +27,7 @@ export function useFeaturedInfo() {
     loadFeaturedInfoFromLocalStorageSync()
   );
   const [isLoading, setIsLoading] = useState(true);
+  const [hasCloudLoaded, setHasCloudLoaded] = useState(false);
   const [isCloudInitialized, setIsCloudInitialized] = useState(false);
 
   const featuredRef = useRef<FeaturedInfoItem[]>(featuredItems);
@@ -65,6 +66,7 @@ export function useFeaturedInfo() {
     const unsubscribe = subscribeCloudFeaturedInfo((cloudItems, cloudInit) => {
       if (!isMounted) return;
       cloudInitializedRef.current = cloudInit;
+      setHasCloudLoaded(true);
       setIsCloudInitialized(cloudInit);
 
       if (cloudInit) {
@@ -287,6 +289,7 @@ export function useFeaturedInfo() {
     featuredItems,
     activeFeaturedItems,
     isLoading,
+    hasCloudLoaded,
     isCloudInitialized,
     syncFeaturedToCloud,
     addFeaturedItem,

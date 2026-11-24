@@ -2,12 +2,15 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { User, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, ADMIN_EMAIL } from '../firebase';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 interface FirebaseAuthContextValue {
   user: User | null;
   isAuthReady: boolean;
   isCloudAdmin: boolean;
   authError: string | null;
+  unauthorizedDomainHost: string | null;
+  firebaseProjectId: string;
   isSigningIn: boolean;
   clearAuthError: () => void;
   signInWithGoogle: () => Promise<{ ok: boolean; isAdmin: boolean; error?: string }>;
@@ -19,6 +22,8 @@ const FirebaseAuthContext = createContext<FirebaseAuthContextValue>({
   isAuthReady: false,
   isCloudAdmin: false,
   authError: null,
+  unauthorizedDomainHost: null,
+  firebaseProjectId: firebaseConfig.projectId,
   isSigningIn: false,
   clearAuthError: () => undefined,
   signInWithGoogle: async () => ({ ok: false, isAdmin: false }),
@@ -43,6 +48,7 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isCloudAdmin, setIsCloudAdmin] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [unauthorizedDomainHost, setUnauthorizedDomainHost] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   useEffect(() => {
@@ -50,16 +56,24 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setUser(firebaseUser);
       const adminOk = await checkIsAdminUser(firebaseUser);
       setIsCloudAdmin(adminOk);
+      if (adminOk) {
+        setUnauthorizedDomainHost(null);
+        setAuthError(null);
+      }
       setIsAuthReady(true);
     });
     return () => unsubscribe();
   }, []);
 
-  const clearAuthError = useCallback(() => setAuthError(null), []);
+  const clearAuthError = useCallback(() => {
+    setAuthError(null);
+    setUnauthorizedDomainHost(null);
+  }, []);
 
   const signInWithGoogle = useCallback(async () => {
     setIsSigningIn(true);
     setAuthError(null);
+    setUnauthorizedDomainHost(null);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const adminOk = await checkIsAdminUser(result.user);
@@ -78,8 +92,9 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
       } else if (code === 'auth/popup-blocked') {
         friendlyMsg = 'O navegador bloqueou a janela do Google. Permita pop-ups para este site e tente novamente.';
       } else if (code === 'auth/unauthorized-domain') {
-        const host = typeof window !== 'undefined' ? window.location.hostname : 'este domínio';
-        friendlyMsg = `O domínio "${host}" precisa de ser autorizado em Firebase Console → Authentication → Settings → Authorized domains.`;
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        setUnauthorizedDomainHost(host || 'raffa-aliados-do-campo-lda.vercel.app');
+        friendlyMsg = `O domínio "${host}" precisa de ser autorizado 1 única vez no Firebase Console.`;
       } else if (err instanceof Error && err.message) {
         friendlyMsg = err.message;
       }
@@ -94,6 +109,7 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
     await signOut(auth);
     setIsCloudAdmin(false);
     setAuthError(null);
+    setUnauthorizedDomainHost(null);
   }, []);
 
   return (
@@ -103,6 +119,8 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
         isAuthReady,
         isCloudAdmin,
         authError,
+        unauthorizedDomainHost,
+        firebaseProjectId: firebaseConfig.projectId,
         isSigningIn,
         clearAuthError,
         signInWithGoogle,

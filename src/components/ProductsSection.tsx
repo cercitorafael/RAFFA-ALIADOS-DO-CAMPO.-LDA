@@ -459,7 +459,7 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
       {/* Product Detail Modal */}
       {selectedProduct && (
         <ProductDetailModal
-          product={selectedProduct}
+          product={products.find((p) => p.id === selectedProduct.id) || selectedProduct}
           onClose={() => setSelectedProduct(null)}
           onOpenQuote={onOpenQuote}
           onAddToCart={onAddToCart}

@@ -34,6 +34,8 @@ export default function App() {
     user: cloudUser,
     isCloudAdmin,
     authError: cloudAuthError,
+    unauthorizedDomainHost,
+    firebaseProjectId,
     isSigningIn: isSigningInCloud,
     signInWithGoogle,
     signOutCloud,
@@ -42,6 +44,7 @@ export default function App() {
   // CRUD Catalog State & Hook
   const {
     products,
+    hasCloudLoaded,
     isCloudInitialized,
     isCloudSyncing,
     syncAllToCloud,
@@ -59,6 +62,8 @@ export default function App() {
   // Featured Info (Comunicados & Destaques) Hook
   const {
     featuredItems,
+    hasCloudLoaded: hasFeaturedCloudLoaded,
+    isCloudInitialized: isFeaturedCloudInitialized,
     syncFeaturedToCloud,
     addFeaturedItem,
     updateFeaturedItem,
@@ -133,6 +138,42 @@ export default function App() {
       window.removeEventListener('gmp-quota-exceeded', handleMapsQuotaExceeded);
     };
   }, []);
+
+  const autoSeededCatalogRef = React.useRef(false);
+  const autoSeededFeaturedRef = React.useRef(false);
+
+  // Automatically publish existing local catalog & featured items on first Google Admin login
+  useEffect(() => {
+    if (!isCloudAdmin) {
+      autoSeededCatalogRef.current = false;
+      autoSeededFeaturedRef.current = false;
+      return;
+    }
+
+    if (hasCloudLoaded && !isCloudInitialized && !autoSeededCatalogRef.current) {
+      autoSeededCatalogRef.current = true;
+      void syncAllToCloud().then((res) => {
+        if (res.syncedToCloud) {
+          showToast('Catálogo sincronizado automaticamente! Todas as próximas gravações atualizam o site ao vivo.');
+        }
+      });
+    }
+
+    if (hasFeaturedCloudLoaded && !isFeaturedCloudInitialized && !autoSeededFeaturedRef.current) {
+      autoSeededFeaturedRef.current = true;
+      void syncFeaturedToCloud();
+      void syncLogoToCloud();
+    }
+  }, [
+    isCloudAdmin,
+    hasCloudLoaded,
+    isCloudInitialized,
+    hasFeaturedCloudLoaded,
+    isFeaturedCloudInitialized,
+    syncAllToCloud,
+    syncFeaturedToCloud,
+    syncLogoToCloud,
+  ]);
 
   // Close & Lock Admin Panel (Ensures PIN is strictly requested on every return)
   const handleCloseAdminCatalog = () => {
@@ -284,10 +325,18 @@ export default function App() {
   const handleSaveFeaturedInfo = async (infoData: Omit<FeaturedInfoItem, 'id' | 'createdAt'> & { id?: string }) => {
     if (infoData.id) {
       await updateFeaturedItem(infoData.id, infoData);
-      showToast(`Informação "${infoData.title}" atualizada com sucesso!`);
+      showToast(
+        isCloudAdmin
+          ? `Informação "${infoData.title}" atualizada e publicada na nuvem!`
+          : `Informação "${infoData.title}" atualizada localmente!`
+      );
     } else {
       await addFeaturedItem(infoData);
-      showToast(`Nova informação "${infoData.title}" adicionada e publicada no destaque!`);
+      showToast(
+        isCloudAdmin
+          ? `Nova informação "${infoData.title}" publicada imediatamente no destaque e na nuvem!`
+          : `Nova informação "${infoData.title}" adicionada localmente ao destaque!`
+      );
     }
     setIsFeaturedInfoModalOpen(false);
     setEditingFeaturedInfo(null);
@@ -420,6 +469,8 @@ export default function App() {
         cloudUserEmail={cloudUser?.email || null}
         isSigningInCloud={isSigningInCloud}
         cloudAuthError={cloudAuthError}
+        unauthorizedDomainHost={unauthorizedDomainHost}
+        firebaseProjectId={firebaseProjectId}
         onSignInCloud={handleSignInCloud}
         onSignOutCloud={signOutCloud}
         isCatalogCloudInitialized={isCloudInitialized}
