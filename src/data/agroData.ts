@@ -12,6 +12,14 @@ export const COMPANY_INFO = {
   location: 'Namiconha - Ribaué',
   province: 'Província de Nampula',
   country: 'Moçambique',
+  coordinates: {
+    lat: -14.9628,
+    lng: 38.2839,
+  },
+  socials: {
+    facebook: 'https://www.facebook.com/search/top?q=Raffa%20Aliados%20do%20Campo',
+    instagram: 'https://www.instagram.com/explore/tags/raffaaliadosdocampo/',
+  },
   openingHours: 'Segunda a Sábado: 07:00 - 17:30 | Domingo: 08:00 - 13:00',
   aboutSnippet: 'Localizada no coração produtivo de Ribaué (Namiconha), a Raffa Aliados do Campo é o parceiro estratégico do produtor rural, fornecendo sementes de alta taxa de germinação, fertilizantes certificados, defensivos agrícolas e equipamentos de ponta para impulsionar o rendimento da sua lavoura.',
 };

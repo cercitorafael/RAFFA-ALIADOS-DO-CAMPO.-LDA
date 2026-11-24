@@ -84,7 +84,7 @@ export function useBrandConfig() {
       if (typeof fileOrUrl === 'string') {
         finalUrl = fileOrUrl;
       } else {
-        finalUrl = await optimizeImage(fileOrUrl, 600, 600, 0.88);
+        finalUrl = await optimizeImage(fileOrUrl, 1200, 1200, 0.92);
       }
 
       setConfig((prev) => ({ ...prev, logoImage: finalUrl }));

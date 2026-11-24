@@ -9,22 +9,18 @@ import {
   Heart,
   ShieldCheck,
   Settings2,
-  Plus,
-  Megaphone
+  Share2,
+  ExternalLink
 } from 'lucide-react';
 import { COMPANY_INFO } from '../data/agroData';
 import { RaffaLogo } from './RaffaLogo';
 
 interface FooterProps {
   onOpenAdminCatalog?: () => void;
-  onAddNewFeaturedInfo?: () => void;
-  onOpenFeaturedInfoManager?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({ 
   onOpenAdminCatalog,
-  onAddNewFeaturedInfo,
-  onOpenFeaturedInfoManager,
 }) => {
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -68,6 +64,9 @@ export const Footer: React.FC<FooterProps> = ({
               </li>
               <li>
                 <a href="#calculadora" className="hover:text-emerald-400 transition-colors">Calculadora de Semeadura</a>
+              </li>
+              <li>
+                <a href="#calendario" className="hover:text-emerald-400 transition-colors">Calendário Agrícola (Ribaué)</a>
               </li>
               <li>
                 <a href="#quem-somos" className="hover:text-emerald-400 transition-colors">Quem Somos</a>
@@ -126,6 +125,39 @@ export const Footer: React.FC<FooterProps> = ({
                 </p>
                 <p className="pl-6 text-stone-400">{COMPANY_INFO.province} • {COMPANY_INFO.country}</p>
               </div>
+
+              {/* Social Links */}
+              <div className="pt-2 flex flex-wrap items-center gap-2">
+                <a
+                  href={`https://wa.me/258${COMPANY_INFO.whatsapp}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-stone-900 hover:bg-emerald-900 text-emerald-400 border border-stone-800 text-xs font-semibold transition-colors"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>WhatsApp</span>
+                </a>
+                <a
+                  href={COMPANY_INFO.socials.facebook}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800 text-xs font-semibold transition-colors"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Facebook</span>
+                  <ExternalLink className="w-3 h-3 text-stone-500" />
+                </a>
+                <a
+                  href={COMPANY_INFO.socials.instagram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800 text-xs font-semibold transition-colors"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Instagram</span>
+                  <ExternalLink className="w-3 h-3 text-stone-500" />
+                </a>
+              </div>
             </div>
           </div>
 
@@ -143,28 +175,6 @@ export const Footer: React.FC<FooterProps> = ({
               >
                 <Settings2 className="w-3.5 h-3.5 text-emerald-500" />
                 <span>Gerir Catálogo</span>
-              </button>
-            )}
-            {onAddNewFeaturedInfo && (
-              <button
-                id="footer-add-featured-info-btn"
-                onClick={onAddNewFeaturedInfo}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-stone-200 border border-stone-800 hover:border-stone-700 transition-colors text-xs font-medium cursor-pointer"
-                title="Adicionar Informação ao Destaque"
-              >
-                <Plus className="w-3.5 h-3.5 text-amber-400" />
-                <span>+ Adicionar Informação ao Destaque</span>
-              </button>
-            )}
-            {onOpenFeaturedInfoManager && (
-              <button
-                id="footer-manage-featured-info-btn"
-                onClick={onOpenFeaturedInfoManager}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-stone-200 border border-stone-800 hover:border-stone-700 transition-colors text-xs font-medium cursor-pointer"
-                title="Gerir Destaques da Campanha"
-              >
-                <Megaphone className="w-3.5 h-3.5 text-amber-400" />
-                <span>Gerir Destaques</span>
               </button>
             )}
             <span>

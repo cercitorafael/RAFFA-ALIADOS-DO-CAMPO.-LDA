@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Lock, KeyRound, X, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Lock, KeyRound, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { getAdminPinSync, loadAdminPinFromStorage } from '../utils/persistentDB';
 
 interface AdminAuthModalProps {
   isOpen: boolean;
@@ -8,8 +10,6 @@ interface AdminAuthModalProps {
   actionTitle?: string;
 }
 
-export const ADMIN_SECURITY_PIN = '4029';
-
 export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   isOpen,
   onClose,
@@ -17,6 +17,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   actionTitle = 'Gerir Catálogo / Edição de Produtos',
 }) => {
   const [pin, setPin] = useState('');
+  const [expectedPin, setExpectedPin] = useState(() => getAdminPinSync());
   const [error, setError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -26,16 +27,20 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       setPin('');
       setError(false);
       setErrorMessage('');
+      loadAdminPinFromStorage().then((storedPin) => {
+        setExpectedPin(storedPin);
+      });
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  const handleVerify = (codeToTest: string) => {
-    if (codeToTest === ADMIN_SECURITY_PIN) {
+  const handleVerify = async (codeToTest: string) => {
+    const latestPin = await loadAdminPinFromStorage().catch(() => expectedPin);
+    if (codeToTest === latestPin) {
       setError(false);
       onSuccess();
       onClose();
@@ -72,8 +77,8 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
     setError(false);
   };
 
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-stone-950/85 backdrop-blur-sm transition-opacity animate-in fade-in"
@@ -226,6 +231,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

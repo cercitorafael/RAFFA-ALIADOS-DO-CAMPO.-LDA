@@ -15,9 +15,13 @@ import { ProductFormModal } from './components/ProductFormModal';
 import { AdminAuthModal } from './components/AdminAuthModal';
 import { FeaturedInfoSection } from './components/FeaturedInfoSection';
 import { FeaturedInfoModal } from './components/FeaturedInfoModal';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { AgroCalendarSection } from './components/AgroCalendarSection';
+import { CartDrawerModal } from './components/CartDrawerModal';
 import { useProductsCatalog } from './hooks/useProductsCatalog';
 import { useAdminAuth } from './hooks/useAdminAuth';
 import { useFeaturedInfo } from './hooks/useFeaturedInfo';
+import { useCart } from './hooks/useCart';
 import { ProductItem, FeaturedInfoItem } from './types';
 
 export default function App() {
@@ -27,8 +31,6 @@ export default function App() {
   // CRUD Catalog State & Hook
   const {
     products,
-    syncStatus,
-    lastSyncedAt,
     addProduct,
     updateProduct,
     deleteProduct,
@@ -38,8 +40,6 @@ export default function App() {
     resetToDefault,
     importCatalog,
     exportCatalogJSON,
-    syncWithCloud,
-    pullFromCloud,
   } = useProductsCatalog();
 
   // Featured Info (Comunicados & Destaques) Hook
@@ -52,7 +52,7 @@ export default function App() {
     deleteFeaturedItem,
   } = useFeaturedInfo();
 
-  // Admin PIN Auth (4029) Hook
+  // Admin PIN Auth Hook
   const {
     isAuthenticated,
     isAuthModalOpen,
@@ -61,7 +61,23 @@ export default function App() {
     handleAuthSuccess,
     handleCloseAuth,
     lockAdminSession,
+    changeAdminPin,
   } = useAdminAuth();
+
+  // Persistent Order Cart ("Minha Lista de Pedido") Hook
+  const {
+    items: cartItems,
+    totalItems: cartTotalItems,
+    estimatedTotalMzn,
+    hasUnpricedItems,
+    addToCart,
+    updateQuantity: updateCartQuantity,
+    removeFromCart: removeCartItem,
+    clearCart,
+  } = useCart();
+
+  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [mapsQuotaExceeded, setMapsQuotaExceeded] = useState<boolean>(false);
 
   const [isAdminCatalogOpen, setIsAdminCatalogOpen] = useState<boolean>(false);
   const [isProductFormOpen, setIsProductFormOpen] = useState<boolean>(false);
@@ -90,7 +106,16 @@ export default function App() {
       }
     };
     window.addEventListener('raffa_brand_updated', handleBrandUpdated);
-    return () => window.removeEventListener('raffa_brand_updated', handleBrandUpdated);
+
+    const handleMapsQuotaExceeded = () => {
+      setMapsQuotaExceeded(true);
+    };
+    window.addEventListener('gmp-quota-exceeded', handleMapsQuotaExceeded);
+
+    return () => {
+      window.removeEventListener('raffa_brand_updated', handleBrandUpdated);
+      window.removeEventListener('gmp-quota-exceeded', handleMapsQuotaExceeded);
+    };
   }, []);
 
   // Close & Lock Admin Panel (Ensures PIN is strictly requested on every return)
@@ -217,13 +242,38 @@ export default function App() {
     setEditingFeaturedInfo(null);
   };
 
+  const handleAddToCart = (product: ProductItem) => {
+    addToCart(product, 1);
+    showToast(`"${product.name}" adicionado à sua lista de pedido!`);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-stone-50 text-stone-900 font-['Plus_Jakarta_Sans',sans-serif]">
+      {/* Google Maps Case A Quota Warning Banner */}
+      {mapsQuotaExceeded && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
+          <span>
+            Google Maps Platform quota reached. If you are the app owner, visit{' '}
+            <a
+              href="https://developers.google.com/maps/ai/ai-studio?utm_campaign=gmp_mcp_codeassist_v1_aistudio#quota_exceeded_errors"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-semibold text-amber-950 hover:text-amber-800"
+            >
+              maps developer site
+            </a>{' '}
+            for instructions to update your account.
+          </span>
+        </div>
+      )}
+
       {/* Navigation Header */}
       <Header 
         onOpenQuote={handleOpenQuote}
         onOpenAdminCatalog={handleOpenAdminCatalogProtected}
         onAddNewProduct={handleAddNewProductProtected}
+        onOpenCart={() => setIsCartOpen(true)}
+        cartItemCount={cartTotalItems}
       />
 
       {/* Main Content Sections */}
@@ -235,10 +285,6 @@ export default function App() {
         <FeaturedInfoSection 
           items={featuredItems}
           onOpenQuote={handleOpenQuote}
-          onAddNewInfo={handleAddNewFeaturedInfoProtected}
-          onEditInfo={handleEditFeaturedInfoProtected}
-          onToggleActive={handleToggleFeaturedInfoActiveProtected}
-          onDeleteInfo={handleDeleteFeaturedInfoProtected}
         />
 
         {/* 2. Services Section (Sementes, Fertilizantes, Agroquímicos, Equipamentos, Prestação de Serviços) */}
@@ -251,38 +297,50 @@ export default function App() {
           onOpenAdminCatalog={handleOpenAdminCatalogProtected}
           onAddNewProduct={handleAddNewProductProtected}
           onEditProduct={handleEditProductProtected}
+          onAddToCart={handleAddToCart}
         />
 
         {/* 4. Agronomic Calculator for Seed & Fertilizer Requirements */}
         <SeedCalculator onOpenQuote={handleOpenQuote} />
 
-        {/* 5. Quem Somos Section (About Raffa Aliados do Campo in Namiconha, Ribaué) */}
+        {/* 5. Regional Agricultural Calendar (Ribaué & Nampula) */}
+        <AgroCalendarSection onOpenQuote={handleOpenQuote} />
+
+        {/* 6. Quem Somos Section (About Raffa Aliados do Campo in Namiconha, Ribaué) */}
         <AboutSection onOpenQuote={() => handleOpenQuote('Parceria Geral / Associação')} />
 
-        {/* 6. Contact Section (WhatsApp 870095149, Tel 848361130, Email raffaaliadosdocampo@gmail.com, Namiconha - Ribaué) */}
+        {/* 7. Contact Section (WhatsApp 870095149, Tel 848361130, Email raffaaliadosdocampo@gmail.com, Namiconha - Ribaué) */}
         <ContactSection onOpenQuote={() => handleOpenQuote()} />
       </main>
 
       {/* Footer */}
       <Footer 
         onOpenAdminCatalog={handleOpenAdminCatalogProtected}
-        onAddNewFeaturedInfo={handleAddNewFeaturedInfoProtected}
-        onOpenFeaturedInfoManager={() => {
-          const el = document.getElementById('informacoes-destaque');
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth' });
-          }
-        }}
       />
 
       {/* Floating Action Button */}
       <FloatingWhatsApp />
+
+      {/* Offline Connectivity Banner */}
+      <OfflineIndicator />
 
       {/* Interactive Quotation Modal */}
       <QuoteModal
         isOpen={isQuoteOpen}
         onClose={handleCloseQuote}
         initialProduct={quoteInitialProduct}
+      />
+
+      {/* Persistent Order Cart Drawer */}
+      <CartDrawerModal
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        items={cartItems}
+        estimatedTotalMzn={estimatedTotalMzn}
+        hasUnpricedItems={hasUnpricedItems}
+        onUpdateQuantity={updateCartQuantity}
+        onRemoveItem={removeCartItem}
+        onClearCart={clearCart}
       />
 
       {/* CRUD Admin Management Center Modal */}
@@ -301,11 +359,12 @@ export default function App() {
         onResetToDefault={resetToDefault}
         onImportJSON={importCatalog}
         onExportJSON={exportCatalogJSON}
-        onSyncCloud={syncWithCloud}
-        onPullCloud={pullFromCloud}
-        onOpenFeaturedInfoManager={handleAddNewFeaturedInfoProtected}
-        syncStatus={syncStatus}
-        lastSyncedAt={lastSyncedAt}
+        featuredItems={featuredItems}
+        onAddNewFeaturedInfo={handleAddNewFeaturedInfoProtected}
+        onEditFeaturedInfo={handleEditFeaturedInfoProtected}
+        onToggleFeaturedInfoActive={handleToggleFeaturedInfoActiveProtected}
+        onDeleteFeaturedInfo={handleDeleteFeaturedInfoProtected}
+        onChangeAdminPin={changeAdminPin}
       />
 
       {/* CRUD Create/Edit Product Modal */}

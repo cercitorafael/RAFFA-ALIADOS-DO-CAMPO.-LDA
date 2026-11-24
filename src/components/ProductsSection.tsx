@@ -9,10 +9,12 @@ import {
   Info,
   Filter,
   Plus,
-  Settings2
+  Settings2,
+  ShoppingCart
 } from 'lucide-react';
 import { ProductItem } from '../types';
 import { ProductDetailModal } from './ProductDetailModal';
+import { formatMzn } from './CartDrawerModal';
 
 interface ProductsSectionProps {
   products: ProductItem[];
@@ -20,6 +22,7 @@ interface ProductsSectionProps {
   onOpenAdminCatalog: () => void;
   onAddNewProduct: () => void;
   onEditProduct: (product: ProductItem) => void;
+  onAddToCart?: (product: ProductItem) => void;
 }
 
 export const ProductsSection: React.FC<ProductsSectionProps> = ({ 
@@ -27,7 +30,8 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
   onOpenQuote,
   onOpenAdminCatalog,
   onAddNewProduct,
-  onEditProduct
+  onEditProduct,
+  onAddToCart,
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>('todos');
   const [activeSubCategory, setActiveSubCategory] = useState<string>('todas');
@@ -261,13 +265,17 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
                 }`}
               >
                 <div>
-                  {/* Image Container */}
-                  <div className="relative h-56 sm:h-60 overflow-hidden bg-stone-100">
+                  {/* Image Container (clickable to view full image & details) */}
+                  <div
+                    onClick={() => setSelectedProduct(product)}
+                    className="relative h-56 sm:h-60 overflow-hidden bg-stone-100 cursor-pointer flex items-center justify-center"
+                    title="Clique para abrir a imagem completa e detalhes"
+                  >
                     <img
                       src={product.image}
                       alt={product.name}
                       loading="lazy"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform duration-500"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1597362925123-77861d3fbac7?auto=format&fit=crop&w=800&q=80';
                       }}
@@ -296,6 +304,29 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
 
                   {/* Card Content */}
                   <div className="p-6">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span
+                        className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md border ${
+                          product.stockStatus === 'low'
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            : product.stockStatus === 'out_of_stock'
+                            ? 'bg-stone-100 text-stone-600 border-stone-200'
+                            : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        }`}
+                      >
+                        {product.stockStatus === 'low'
+                          ? 'Últimas Unidades'
+                          : product.stockStatus === 'out_of_stock'
+                          ? 'Sob Encomenda'
+                          : 'Em Stock'}
+                      </span>
+                      <span className="text-xs font-black text-emerald-900">
+                        {product.priceMzn && product.priceMzn > 0
+                          ? `${formatMzn(product.priceMzn)} MZN${product.priceUnit ? ` / ${product.priceUnit}` : ''}`
+                          : 'Sob Consulta'}
+                      </span>
+                    </div>
+
                     <h3 className="text-xl font-bold text-stone-900 font-['Outfit'] mb-1.5 group-hover:text-emerald-800 transition-colors">
                       {product.name}
                     </h3>
@@ -349,22 +380,35 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
                 </div>
 
                 {/* Card Actions */}
-                <div className="p-6 pt-0 flex items-center gap-2 border-t border-stone-100 mt-2">
+                <div className="p-6 pt-3 flex items-center gap-2 border-t border-stone-100 mt-2">
                   <button
                     id={`view-details-${product.id}`}
                     onClick={() => setSelectedProduct(product)}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    className="py-2.5 px-3 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="Ver Ficha Técnica"
                   >
                     <Info className="w-3.5 h-3.5 text-stone-500" />
-                    <span>Ver Ficha Técnica</span>
+                    <span>Ficha</span>
                   </button>
+
+                  {onAddToCart && (
+                    <button
+                      id={`add-cart-${product.id}`}
+                      onClick={() => onAddToCart(product)}
+                      className="flex-1 py-2.5 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-black text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                      title="Adicionar à Lista de Pedido"
+                    >
+                      <ShoppingCart className="w-3.5 h-3.5" />
+                      <span>Adicionar</span>
+                    </button>
+                  )}
 
                   <button
                     id={`btn-quote-product-${product.id}`}
                     onClick={() => onOpenQuote(product.name)}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-1 shadow-sm"
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-1 shadow-sm cursor-pointer"
                   >
-                    <span>Pedir Cotação</span>
+                    <span>Cotação</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -418,6 +462,7 @@ export const ProductsSection: React.FC<ProductsSectionProps> = ({
           product={selectedProduct}
           onClose={() => setSelectedProduct(null)}
           onOpenQuote={onOpenQuote}
+          onAddToCart={onAddToCart}
         />
       )}
     </section>

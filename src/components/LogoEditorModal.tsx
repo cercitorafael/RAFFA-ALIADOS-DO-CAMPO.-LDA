@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   Upload, 
@@ -41,7 +42,16 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
+
+  if (!isOpen || typeof document === 'undefined') return null;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -54,7 +64,7 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({
 
     setErrorMsg('');
     try {
-      const optimized = await optimizeImage(file, 800, 800, 0.88);
+      const optimized = await optimizeImage(file, 1200, 1200, 0.92);
       setLogoPreview(optimized);
     } catch (err) {
       console.warn('Erro ao processar imagem:', err);
@@ -106,8 +116,8 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({
     grid: 'bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] bg-stone-100 border-stone-300'
   };
 
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-stone-950/85 backdrop-blur-md animate-in fade-in overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-stone-950/85 backdrop-blur-md animate-in fade-in overflow-y-auto">
       <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden border border-stone-300 flex flex-col my-auto">
         
         {/* Header */}
@@ -201,16 +211,16 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({
 
               {/* Large Display Canvas */}
               <div className={`w-full h-72 sm:h-84 rounded-2xl border-2 shadow-inner flex items-center justify-center p-6 relative overflow-hidden transition-colors ${bgStyles[previewBg]}`}>
-                <div className="w-48 h-48 sm:w-60 sm:h-60 flex items-center justify-center">
+                <div className="w-full h-56 sm:h-64 flex items-center justify-center">
                   {logoPreview ? (
                     <img
                       src={logoPreview}
                       alt="Logótipo RAFFA"
-                      className="max-w-full max-h-full object-contain drop-shadow-md transition-transform hover:scale-105"
+                      className="max-w-full max-h-full w-auto h-auto object-contain drop-shadow-md transition-transform hover:scale-105"
                       onError={() => setErrorMsg('Não foi possível carregar a imagem deste link.')}
                     />
                   ) : (
-                    <OfficialRaffaEmblem className="w-full h-full drop-shadow-md hover:scale-105 transition-transform" />
+                    <OfficialRaffaEmblem className="w-48 h-48 sm:w-60 sm:h-60 drop-shadow-md hover:scale-105 transition-transform" />
                   )}
                 </div>
               </div>
@@ -221,13 +231,15 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({
                   Exemplo de Aplicação no Cabeçalho do Site:
                 </span>
                 <div className="flex items-center gap-3 bg-stone-900 text-white p-3 rounded-xl border border-stone-800">
-                  <div className="w-10 h-10 rounded-xl bg-white/10 p-1 flex items-center justify-center shrink-0 border border-white/20">
-                    {logoPreview ? (
-                      <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
-                    ) : (
+                  {logoPreview ? (
+                    <div className="h-10 w-auto max-w-[140px] flex items-center justify-center shrink-0">
+                      <img src={logoPreview} alt="Logo" className="h-full w-auto max-w-full object-contain" />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-white/10 p-1 flex items-center justify-center shrink-0 border border-white/20">
                       <OfficialRaffaEmblem className="w-full h-full" />
-                    )}
-                  </div>
+                    </div>
+                  )}
                   <div>
                     <div className="text-sm font-black tracking-tight text-white font-['Outfit'] leading-none">
                       RAFFA
@@ -394,6 +406,7 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

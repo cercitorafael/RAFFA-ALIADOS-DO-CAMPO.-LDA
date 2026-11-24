@@ -5,18 +5,9 @@ import {
   ArrowRight, 
   MessageCircle, 
   Clock, 
-  Plus, 
-  Settings2, 
   Tag, 
-  CheckCircle2, 
-  AlertTriangle,
   ChevronDown,
-  ChevronUp,
-  Info,
-  Edit2,
-  Trash2,
-  Eye,
-  EyeOff
+  ChevronUp
 } from 'lucide-react';
 import { FeaturedInfoItem } from '../types';
 import { COMPANY_INFO } from '../data/agroData';
@@ -24,22 +15,13 @@ import { COMPANY_INFO } from '../data/agroData';
 interface FeaturedInfoSectionProps {
   items: FeaturedInfoItem[];
   onOpenQuote: (productOrSubject?: string) => void;
-  onAddNewInfo: () => void;
-  onEditInfo: (item: FeaturedInfoItem) => void;
-  onToggleActive: (id: string) => void;
-  onDeleteInfo: (id: string) => void;
 }
 
 export const FeaturedInfoSection: React.FC<FeaturedInfoSectionProps> = ({
   items,
   onOpenQuote,
-  onAddNewInfo,
-  onEditInfo,
-  onToggleActive,
-  onDeleteInfo,
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showAdminBar, setShowAdminBar] = useState<boolean>(false);
 
   const activeItems = items.filter((item) => item.isActive);
 
@@ -247,117 +229,9 @@ export const FeaturedInfoSection: React.FC<FeaturedInfoSectionProps> = ({
             <h3 className="text-lg font-bold text-stone-200">
               Nenhuma Informação Ativa no Destaque
             </h3>
-            <p className="text-stone-400 text-xs sm:text-sm max-w-md mx-auto mt-1 mb-5">
-              Adicione as suas informações (novidades de sementes, campanhas, preços especiais ou avisos) para que apareçam imediatamente em destaque aqui.
+            <p className="text-stone-400 text-xs sm:text-sm max-w-md mx-auto mt-1">
+              Novos comunicados e destaques de campanha podem ser adicionados através do painel Gerir Catálogo.
             </p>
-            <button
-              onClick={onAddNewInfo}
-              className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold px-5 py-2.5 rounded-xl text-xs shadow-md transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Adicionar Primeira Informação ao Destaque</span>
-            </button>
-          </div>
-        )}
-
-        {/* Bottom Actions Bar - Gestão no fim da secção */}
-        <div className="mt-10 pt-6 border-t border-stone-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
-          <div className="text-stone-400 text-center sm:text-left">
-            <span>Avisos oficiais, chegadas de sementes e campanhas agrícolas da Raffa Aliados do Campo em Ribaué.</span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              id="featured-info-add-btn-bottom"
-              onClick={onAddNewInfo}
-              className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-lg transition-all active:scale-[0.98]"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Adicionar Informação ao Destaque</span>
-            </button>
-            <button
-              id="featured-info-manage-btn-bottom"
-              onClick={() => setShowAdminBar(!showAdminBar)}
-              className={`p-2.5 rounded-xl border text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                showAdminBar 
-                  ? 'bg-amber-400 text-stone-950 border-amber-300' 
-                  : 'bg-stone-800 hover:bg-stone-700 border-stone-700 text-stone-200'
-              }`}
-              title="Gerir Destaques"
-            >
-              <Settings2 className="w-4 h-4" />
-              <span>{showAdminBar ? 'Ocultar Gestão' : 'Gerir Destaques'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Admin Quick Management Bar (when toggled at the bottom) */}
-        {showAdminBar && (
-          <div className="mt-6 p-4 bg-stone-800/95 border border-stone-700 rounded-2xl animate-in fade-in">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3 border-b border-stone-700 pb-2.5">
-              <div className="flex items-center gap-2">
-                <Megaphone className="w-4 h-4 text-amber-400" />
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-200">
-                  Painel Rápido de Informações ({items.length} registos no total, {activeItems.length} ativos em destaque)
-                </span>
-              </div>
-              <button
-                onClick={onAddNewInfo}
-                className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Criar Nova Informação
-              </button>
-            </div>
-
-            <div className="divide-y divide-stone-700/60 max-h-60 overflow-y-auto pr-1">
-              {items.map((item) => (
-                <div key={item.id} className="py-2 flex items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <button
-                      onClick={() => onToggleActive(item.id)}
-                      className={`p-1.5 rounded-lg transition-colors ${
-                        item.isActive 
-                          ? 'bg-emerald-600/30 text-emerald-400 hover:bg-emerald-600/50' 
-                          : 'bg-stone-700 text-stone-400 hover:bg-stone-600'
-                      }`}
-                      title={item.isActive ? 'Clique para desativar do destaque' : 'Clique para ativar no destaque'}
-                    >
-                      {item.isActive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                    </button>
-                    <div className="min-w-0">
-                      <span className="font-bold text-stone-100 truncate block">
-                        {item.title}
-                      </span>
-                      <span className="text-[11px] text-stone-400 flex items-center gap-2">
-                        <span>{item.categoryLabel || item.category}</span>
-                        <span>•</span>
-                        <span className={item.isActive ? 'text-emerald-400 font-semibold' : 'text-stone-500'}>
-                          {item.isActive ? '✓ No Destaque' : 'Oculto'}
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => onEditInfo(item)}
-                      className="p-1.5 rounded-lg bg-stone-700 hover:bg-stone-600 text-stone-200 transition-colors"
-                      title="Editar Informação"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => onDeleteInfo(item.id)}
-                      className="p-1.5 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 transition-colors"
-                      title="Apagar Informação"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 

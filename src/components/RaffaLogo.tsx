@@ -25,10 +25,30 @@ export const RaffaLogo: React.FC<RaffaLogoProps> = ({
   const [isAuthOpen, setIsAuthOpen] = useState(false);
 
   const sizeMap = {
-    sm: { emblem: 'w-10 h-10', title: 'text-base', sub: 'text-[9px]' },
-    md: { emblem: 'w-12 h-12 sm:w-14 sm:h-14', title: 'text-lg sm:text-xl', sub: 'text-[10px]' },
-    lg: { emblem: 'w-18 h-18 sm:w-20 sm:h-20', title: 'text-2xl', sub: 'text-xs' },
-    xl: { emblem: 'w-28 h-28', title: 'text-3xl', sub: 'text-sm' },
+    sm: {
+      emblem: 'w-10 h-10',
+      customBox: 'h-10 w-auto max-w-[140px]',
+      title: 'text-base',
+      sub: 'text-[9px]',
+    },
+    md: {
+      emblem: 'w-12 h-12 sm:w-14 sm:h-14',
+      customBox: 'h-12 sm:h-14 w-auto max-w-[180px]',
+      title: 'text-lg sm:text-xl',
+      sub: 'text-[10px]',
+    },
+    lg: {
+      emblem: 'w-18 h-18 sm:w-20 sm:h-20',
+      customBox: 'h-16 sm:h-20 w-auto max-w-[240px]',
+      title: 'text-2xl',
+      sub: 'text-xs',
+    },
+    xl: {
+      emblem: 'w-28 h-28',
+      customBox: 'h-24 sm:h-28 w-auto max-w-[300px]',
+      title: 'text-3xl',
+      sub: 'text-sm',
+    },
   };
 
   const currentSize = sizeMap[size];
@@ -45,20 +65,18 @@ export const RaffaLogo: React.FC<RaffaLogoProps> = ({
     <>
       <div className={`inline-flex items-center gap-3 ${className}`}>
         {/* Emblem or Custom Image with Click-to-Edit */}
-        <div 
-          className={`relative ${currentSize.emblem} shrink-0 group ${allowEdit ? 'cursor-pointer' : ''}`}
+        <div
+          className={`relative ${logoImage ? currentSize.customBox : currentSize.emblem} shrink-0 group flex items-center justify-center ${allowEdit ? 'cursor-pointer' : ''}`}
           onClick={handleLogoClick}
           title={allowEdit ? 'Logótipo Oficial RAFFA Aliados do Campo (Requer PIN para alterar)' : undefined}
         >
           {logoImage ? (
-            /* Custom Uploaded Image Logo */
-            <div className="w-full h-full rounded-2xl overflow-hidden bg-white shadow-sm border border-stone-200/90 flex items-center justify-center p-1">
-              <img
-                src={logoImage}
-                alt="RAFFA Aliados do Campo"
-                className="w-full h-full object-contain"
-              />
-            </div>
+            /* Custom Uploaded Image Logo: preserves exact original shape & aspect ratio without cropping */
+            <img
+              src={logoImage}
+              alt="RAFFA Aliados do Campo"
+              className="h-full w-auto max-w-full object-contain block"
+            />
           ) : (
             /* Official High-Resolution Vector Emblem */
             <div className="w-full h-full rounded-2xl bg-white p-1 shadow-sm border border-stone-200/80 flex items-center justify-center transition-transform group-hover:scale-105">

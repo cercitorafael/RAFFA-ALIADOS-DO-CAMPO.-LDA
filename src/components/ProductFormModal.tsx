@@ -78,6 +78,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [image, setImage] = useState('');
   const [badge, setBadge] = useState('');
   const [popular, setPopular] = useState(false);
+  const [priceMzn, setPriceMzn] = useState('');
+  const [priceUnit, setPriceUnit] = useState('');
+  const [stockStatus, setStockStatus] = useState<'available' | 'low' | 'out_of_stock'>('available');
   
   // Specs
   const [cycleDays, setCycleDays] = useState('');
@@ -108,6 +111,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setImage(initialProduct.image || '');
       setBadge(initialProduct.badge || '');
       setPopular(!!initialProduct.popular);
+      setPriceMzn(initialProduct.priceMzn ? String(initialProduct.priceMzn) : '');
+      setPriceUnit(initialProduct.priceUnit || '');
+      setStockStatus(initialProduct.stockStatus || 'available');
       setVarieties(initialProduct.varieties || []);
       setCycleDays(initialProduct.specs?.cycleDays || '');
       setSeedRatePerHa(initialProduct.specs?.seedRatePerHa || '');
@@ -124,6 +130,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setImage('https://images.unsplash.com/photo-1597362925123-77861d3fbac7?auto=format&fit=crop&w=800&q=80');
       setBadge('Certificado');
       setPopular(false);
+      setPriceMzn('');
+      setPriceUnit('Saco / Lata');
+      setStockStatus('available');
       setVarieties(['Variedade Selecionada']);
       setCycleDays('70 - 90 dias');
       setSeedRatePerHa('200g a 300g / ha');
@@ -182,6 +191,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     const categoryObj = CATEGORY_OPTIONS.find((c) => c.value === category);
     const categoryLabel = categoryObj ? categoryObj.label.split(' (')[0] : 'Sementes';
 
+    const parsedPrice = priceMzn.trim() ? Number(priceMzn.replace(',', '.')) : undefined;
+
     const productPayload: Omit<ProductItem, 'id'> & { id?: string } = {
       ...(initialProduct?.id ? { id: initialProduct.id } : {}),
       name: name.trim(),
@@ -190,6 +201,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       categoryLabel,
       tagline: tagline.trim() || 'Sementes de alto rendimento para solos de Nampula',
       description: description.trim() || 'Semente de qualidade com excelente taxa de germinação.',
+      priceMzn: parsedPrice && !Number.isNaN(parsedPrice) && parsedPrice > 0 ? parsedPrice : undefined,
+      priceUnit: priceUnit.trim() || undefined,
+      stockStatus,
       image: image || 'https://images.unsplash.com/photo-1597362925123-77861d3fbac7?auto=format&fit=crop&w=800&q=80',
       badge: badge.trim() || undefined,
       popular,
@@ -327,6 +341,49 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   onChange={(e) => setBadge(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-emerald-600 outline-none text-sm"
                 />
+              </div>
+
+              <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3 bg-emerald-50/60 border border-emerald-200 rounded-2xl p-3.5">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-emerald-950 mb-1">
+                    Preço Unitário (MZN)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="Ex: 1250 (deixe vazio p/ consulta)"
+                    value={priceMzn}
+                    onChange={(e) => setPriceMzn(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-stone-300 bg-white focus:ring-2 focus:ring-emerald-600 outline-none text-sm font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-emerald-950 mb-1">
+                    Unidade de Preço
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Saco 25kg, Lata 100g, Litro"
+                    value={priceUnit}
+                    onChange={(e) => setPriceUnit(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-stone-300 bg-white focus:ring-2 focus:ring-emerald-600 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-emerald-950 mb-1">
+                    Disponibilidade em Stock
+                  </label>
+                  <select
+                    value={stockStatus}
+                    onChange={(e) => setStockStatus(e.target.value as 'available' | 'low' | 'out_of_stock')}
+                    className="w-full px-3 py-2 rounded-xl border border-stone-300 bg-white focus:ring-2 focus:ring-emerald-600 outline-none text-sm font-semibold"
+                  >
+                    <option value="available">Em Stock (Disponível)</option>
+                    <option value="low">Últimas Unidades</option>
+                    <option value="out_of_stock">Sob Encomenda</option>
+                  </select>
+                </div>
               </div>
 
               <div className="md:col-span-2 bg-amber-50/80 border-2 border-amber-300/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">

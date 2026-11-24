@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { COMPANY_INFO, PRODUCTS_DATA } from '../data/agroData';
 import { QuoteFormData } from '../types';
-import { submitQuoteToCloud } from '../lib/supabase';
+import { saveQuoteToLocalDB } from '../utils/persistentDB';
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -76,8 +76,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
 
   const handleWhatsAppSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Asynchronously record quote in Supabase cloud
-    submitQuoteToCloud(formData).catch(err => console.warn('[Supabase] Could not log quote:', err));
+    void saveQuoteToLocalDB(formData);
     const url = `https://wa.me/258${COMPANY_INFO.whatsapp}?text=${buildWhatsAppMessage()}`;
     window.open(url, '_blank');
     setSubmitted(true);
@@ -85,8 +84,7 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
 
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Asynchronously record quote in Supabase cloud
-    submitQuoteToCloud(formData).catch(err => console.warn('[Supabase] Could not log quote:', err));
+    void saveQuoteToLocalDB(formData);
     const subject = encodeURIComponent(`Solicitação de Orçamento - ${formData.name || 'Cliente'}`);
     const body = encodeURIComponent(
       `Nome: ${formData.name}\n` +

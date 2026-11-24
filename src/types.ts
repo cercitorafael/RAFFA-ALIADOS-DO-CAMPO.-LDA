@@ -6,6 +6,9 @@ export interface ProductItem {
   categoryLabel: string;
   tagline: string;
   description: string;
+  priceMzn?: number;
+  priceUnit?: string;
+  stockStatus?: 'available' | 'low' | 'out_of_stock';
   varieties?: string[];
   specs?: {
     cycleDays?: string;
@@ -20,6 +23,16 @@ export interface ProductItem {
   isUserCreated?: boolean;
   createdAt?: number;
   updatedAt?: number;
+}
+
+export interface CartItem {
+  productId: string;
+  name: string;
+  categoryLabel: string;
+  priceMzn?: number;
+  priceUnit?: string;
+  quantity: number;
+  image: string;
 }
 
 export interface ServiceItem {
@@ -51,6 +64,27 @@ export interface QuoteFormData {
   selectedProduct: string;
   areaOrQuantity: string;
   notes: string;
+}
+
+export interface QuoteRecord extends QuoteFormData {
+  id: string;
+  status?: 'pending' | 'contacted' | 'resolved';
+  totalMzn?: number;
+  source?: 'quote_modal' | 'cart_order';
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface ContactMessageRecord {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  subject?: string;
+  message: string;
+  status?: 'pending' | 'resolved';
+  createdAt: number;
+  updatedAt?: number;
 }
 
 export interface FeaturedInfoItem {

@@ -19,16 +19,30 @@ import {
   HardDrive,
   CheckSquare,
   Square,
-  Cloud,
-  CloudUpload,
-  CloudDownload,
-  Database,
-  RefreshCw,
-  Loader2
+  Inbox,
+  KeyRound,
+  MessageCircle,
+  Phone,
+  MapPin,
+  Clock,
+  CheckCircle2,
+  Mail,
+  Megaphone,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import { ProductItem } from '../types';
+import { ContactMessageRecord, FeaturedInfoItem, ProductItem, QuoteRecord } from '../types';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
-import { checkSupabaseConnection, SUPABASE_PROJECT_INFO } from '../lib/supabase';
+import {
+  deleteContactFromLocalDB,
+  deleteQuoteFromLocalDB,
+  loadContactsFromLocalDB,
+  loadQuotesFromLocalDB,
+  updateContactStatusInLocalDB,
+  updateQuoteStatusInLocalDB,
+} from '../utils/persistentDB';
+import { formatMzn } from './CartDrawerModal';
+import { COMPANY_INFO } from '../data/agroData';
 
 interface AdminCatalogModalProps {
   isOpen: boolean;
@@ -43,11 +57,12 @@ interface AdminCatalogModalProps {
   onResetToDefault: (preserveUserCreated?: boolean) => void;
   onImportJSON: (imported: ProductItem[]) => void;
   onExportJSON: () => void;
-  onSyncCloud?: () => Promise<{ success: boolean; count: number; error?: string }>;
-  onPullCloud?: () => Promise<{ success: boolean; count: number }>;
-  onOpenFeaturedInfoManager?: () => void;
-  syncStatus?: 'idle' | 'syncing' | 'synced' | 'error';
-  lastSyncedAt?: Date | null;
+  featuredItems?: FeaturedInfoItem[];
+  onAddNewFeaturedInfo?: () => void;
+  onEditFeaturedInfo?: (item: FeaturedInfoItem) => void;
+  onToggleFeaturedInfoActive?: (id: string) => void;
+  onDeleteFeaturedInfo?: (id: string) => void;
+  onChangeAdminPin?: (oldPin: string, newPin: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
@@ -63,12 +78,14 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   onResetToDefault,
   onImportJSON,
   onExportJSON,
-  onSyncCloud,
-  onPullCloud,
-  onOpenFeaturedInfoManager,
-  syncStatus = 'idle',
-  lastSyncedAt,
+  featuredItems = [],
+  onAddNewFeaturedInfo,
+  onEditFeaturedInfo,
+  onToggleFeaturedInfoActive,
+  onDeleteFeaturedInfo,
+  onChangeAdminPin,
 }) => {
+  const [activeTab, setActiveTab] = useState<'catalog' | 'featured' | 'history' | 'security'>('catalog');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
   const [productToDelete, setProductToDelete] = useState<ProductItem | null>(null);
@@ -77,17 +94,37 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
   const [isDeleteSelectedModalOpen, setIsDeleteSelectedModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
-
-  // Supabase Cloud State
-  const [isTestingCloud, setIsTestingCloud] = useState(false);
-  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState<{
-    connected?: boolean;
-    latency?: number;
-    message?: string;
-  } | null>(null);
-  
   const fileImportRef = useRef<HTMLInputElement>(null);
+
+  // History state
+  const [quotesHistory, setQuotesHistory] = useState<QuoteRecord[]>([]);
+  const [contactsHistory, setContactsHistory] = useState<ContactMessageRecord[]>([]);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'pending' | 'resolved'>('all');
+
+  // Security PIN change state
+  const [oldPinInput, setOldPinInput] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [confirmPinInput, setConfirmPinInput] = useState('');
+  const [pinFeedback, setPinFeedback] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+
+  const refreshHistory = React.useCallback(async () => {
+    const [qList, cList] = await Promise.all([
+      loadQuotesFromLocalDB(),
+      loadContactsFromLocalDB(),
+    ]);
+    setQuotesHistory(qList);
+    setContactsHistory(cList);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    void refreshHistory();
+    const handler = () => {
+      void refreshHistory();
+    };
+    window.addEventListener('raffa_history_updated', handler);
+    return () => window.removeEventListener('raffa_history_updated', handler);
+  }, [isOpen, refreshHistory]);
 
   if (!isOpen) return null;
 
@@ -96,6 +133,76 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
     setTimeout(() => {
       setFeedbackMessage(null);
     }, 4500);
+  };
+
+  const pendingHistoryCount =
+    quotesHistory.filter((q) => q.status !== 'resolved').length +
+    contactsHistory.filter((c) => c.status !== 'resolved').length;
+
+  const handleToggleQuoteStatus = async (q: QuoteRecord) => {
+    const nextStatus = q.status === 'resolved' ? 'pending' : 'resolved';
+    await updateQuoteStatusInLocalDB(q.id, nextStatus);
+    await refreshHistory();
+    showNotification(`Pedido de "${q.name}" marcado como ${nextStatus === 'resolved' ? 'Atendido' : 'Pendente'}.`);
+  };
+
+  const handleDeleteQuote = async (id: string) => {
+    await deleteQuoteFromLocalDB(id);
+    await refreshHistory();
+    showNotification('Registo de orçamento eliminado.');
+  };
+
+  const handleToggleContactStatus = async (c: ContactMessageRecord) => {
+    const nextStatus = c.status === 'resolved' ? 'pending' : 'resolved';
+    await updateContactStatusInLocalDB(c.id, nextStatus);
+    await refreshHistory();
+    showNotification(`Mensagem de "${c.name}" marcada como ${nextStatus === 'resolved' ? 'Atendida' : 'Pendente'}.`);
+  };
+
+  const handleDeleteContact = async (id: string) => {
+    await deleteContactFromLocalDB(id);
+    await refreshHistory();
+    showNotification('Mensagem eliminada.');
+  };
+
+  const handleExportHistoryJSON = () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      quotes: quotesHistory,
+      contactMessages: contactsHistory,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `raffa-historico-atendimento-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showNotification('Histórico exportado com sucesso!');
+  };
+
+  const handlePinChangeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinFeedback(null);
+    if (!/^\d{4}$/.test(newPinInput)) {
+      setPinFeedback({ type: 'error', text: 'O novo PIN deve conter exatamente 4 dígitos numéricos.' });
+      return;
+    }
+    if (newPinInput !== confirmPinInput) {
+      setPinFeedback({ type: 'error', text: 'A confirmação do novo PIN não coincide.' });
+      return;
+    }
+    if (!onChangeAdminPin) return;
+    const res = await onChangeAdminPin(oldPinInput, newPinInput);
+    if (res.ok) {
+      setOldPinInput('');
+      setNewPinInput('');
+      setConfirmPinInput('');
+      setPinFeedback({ type: 'success', text: 'PIN de administração atualizado e guardado com sucesso!' });
+      showNotification('PIN de segurança alterado com sucesso.');
+    } else {
+      setPinFeedback({ type: 'error', text: res.error || 'Erro ao alterar o PIN.' });
+    }
   };
 
   const userProductsCount = products.filter(p => p.isUserCreated).length;
@@ -140,64 +247,6 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
       showNotification('Catálogo padrão restaurado! As suas sementes personalizadas foram preservadas.');
     } else {
       showNotification('Catálogo restaurado para as configurações originais de fábrica.');
-    }
-  };
-
-  const handleTestSupabase = async () => {
-    setIsTestingCloud(true);
-    setCloudStatus(null);
-    try {
-      const res = await checkSupabaseConnection();
-      setCloudStatus({
-        connected: res.connected,
-        latency: res.latencyMs,
-        message: res.message,
-      });
-      showNotification(res.connected 
-        ? `Supabase Conectado! Latência: ${res.latencyMs || 0}ms` 
-        : `Erro ao ligar ao Supabase: ${res.message}`);
-    } catch (e: any) {
-      setCloudStatus({
-        connected: false,
-        message: e?.message || 'Falha de conexão',
-      });
-      showNotification('Falha de conexão ao Supabase.');
-    } finally {
-      setIsTestingCloud(false);
-    }
-  };
-
-  const handleSyncWithCloud = async () => {
-    if (!onSyncCloud) return;
-    setIsSyncingCloud(true);
-    try {
-      const res = await onSyncCloud();
-      if (res.success) {
-        showNotification(`Sincronização concluída com sucesso! ${res.count} produtos guardados na nuvem Supabase.`);
-      } else {
-        showNotification(`Aviso: ${res.error || 'A nuvem está pronta mas a tabela "products" ainda precisa de ser inicializada no Supabase.'}`);
-      }
-    } catch (err: any) {
-      showNotification(`Falha ao sincronizar: ${err?.message || 'Erro inesperado'}`);
-    } finally {
-      setIsSyncingCloud(false);
-    }
-  };
-
-  const handlePullFromCloud = async () => {
-    if (!onPullCloud) return;
-    setIsSyncingCloud(true);
-    try {
-      const res = await onPullCloud();
-      if (res.success && res.count > 0) {
-        showNotification(`${res.count} produtos carregados com sucesso a partir da nuvem Supabase!`);
-      } else {
-        showNotification('Nenhum produto encontrado na nuvem Supabase ou tabela vazia.');
-      }
-    } catch (err: any) {
-      showNotification(`Erro ao carregar da nuvem: ${err?.message || 'Erro inesperado'}`);
-    } finally {
-      setIsSyncingCloud(false);
     }
   };
 
@@ -305,12 +354,75 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={onClose}
-                className="p-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 transition-colors"
+                className="p-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 transition-colors cursor-pointer"
                 title="Fechar painel"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+          </div>
+
+          {/* Admin Navigation Tabs */}
+          <div className="bg-stone-800 px-6 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-stone-700 shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('catalog')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'catalog'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-stone-300 hover:bg-stone-700'
+              }`}
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>Catálogo ({products.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('featured')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'featured'
+                  ? 'bg-amber-400 text-stone-950 shadow-sm'
+                  : 'text-stone-300 hover:bg-stone-700'
+              }`}
+            >
+              <Megaphone className="w-3.5 h-3.5" />
+              <span>Destaques & Informações ({featuredItems.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('history');
+                void refreshHistory();
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'history'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-stone-300 hover:bg-stone-700'
+              }`}
+            >
+              <Inbox className="w-3.5 h-3.5" />
+              <span>Orçamentos & Mensagens</span>
+              {pendingHistoryCount > 0 && (
+                <span className="bg-amber-400 text-stone-950 text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                  {pendingHistoryCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('security')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'security'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-stone-300 hover:bg-stone-700'
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Segurança (PIN)</span>
+            </button>
           </div>
 
           {/* Notification Toast */}
@@ -327,7 +439,7 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
           )}
 
           {/* Selection Banner when items are selected */}
-          {selectedIds.size > 0 && (
+          {activeTab === 'catalog' && selectedIds.size > 0 && (
             <div className="bg-red-50 border-b border-red-200 px-6 py-2.5 flex items-center justify-between gap-3 text-red-900 shrink-0 animate-in fade-in">
               <div className="flex items-center gap-2 text-xs font-bold">
                 <CheckSquare className="w-4 h-4 text-red-600" />
@@ -351,6 +463,8 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
             </div>
           )}
 
+          {activeTab === 'catalog' && (
+          <>
           {/* Toolbar & Filters */}
           <div className="bg-stone-50 border-b border-stone-200 p-4 shrink-0 space-y-3">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -433,107 +547,27 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
                   <span>Restaurar Originais</span>
                 </button>
 
-                {onOpenFeaturedInfoManager && (
+                {onAddNewFeaturedInfo && (
                   <button
-                    onClick={() => {
-                      onClose();
-                      onOpenFeaturedInfoManager();
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-400 hover:bg-amber-300 text-stone-950 rounded-xl text-xs font-black shadow-sm transition-colors"
-                    title="Adicionar ou gerir avisos e comunicados em destaque"
+                    type="button"
+                    onClick={onAddNewFeaturedInfo}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-400 hover:bg-amber-300 text-stone-950 rounded-xl text-xs font-black shadow-sm transition-colors cursor-pointer"
+                    title="Adicionar nova informação ou comunicado ao destaque"
                   >
-                    <Sparkles className="w-3.5 h-3.5 fill-current" />
-                    <span>Gerir Informações em Destaque</span>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Adicionar Informação</span>
                   </button>
                 )}
-              </div>
-            </div>
 
-            {/* Supabase Cloud Sync & Connection Bar */}
-            <div className="bg-emerald-950/5 border border-emerald-700/20 rounded-xl p-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-emerald-700/10 text-emerald-800 flex items-center justify-center font-bold shrink-0">
-                  <Database className="w-4 h-4 text-emerald-700" />
-                </div>
-                <div>
-                  <div className="flex items-center flex-wrap gap-2">
-                    <span className="font-extrabold text-stone-900 flex items-center gap-1.5">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
-                      </span>
-                      Sincronização Automática com Supabase
-                    </span>
-                    <span className="font-mono text-[10px] text-stone-500 bg-white px-2 py-0.5 rounded border border-stone-200">
-                      {SUPABASE_PROJECT_INFO.host}
-                    </span>
-                    {syncStatus === 'syncing' && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        A sincronizar alterações...
-                      </span>
-                    )}
-                    {syncStatus === 'synced' && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                        ✓ 100% Sincronizado
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-stone-500 mt-0.5">
-                    {cloudStatus?.message 
-                      ? cloudStatus.message 
-                      : (lastSyncedAt 
-                          ? `Qualquer produto adicionado, editado ou eliminado sincroniza em tempo real. Última sincronização: ${lastSyncedAt.toLocaleTimeString('pt-PT')}.`
-                          : 'Todas as alterações no catálogo são salvas e sincronizadas automaticamente em tempo real.')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={handleTestSupabase}
-                  disabled={isTestingCloud}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-stone-100 border border-stone-300 text-stone-700 rounded-lg text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50"
-                  title="Testar ping e conectividade com a API Supabase"
+                  onClick={() => setActiveTab('featured')}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-stone-900 hover:bg-stone-800 text-amber-300 rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                  title="Gerir avisos, ativar/ocultar ou editar destaques da campanha"
                 >
-                  {isTestingCloud ? (
-                    <Loader2 className="w-3.5 h-3.5 text-emerald-700 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3.5 h-3.5 text-emerald-700" />
-                  )}
-                  <span>{isTestingCloud ? 'A testar...' : 'Testar Conexão'}</span>
+                  <Megaphone className="w-3.5 h-3.5" />
+                  <span>Gerir Destaques ({featuredItems.length})</span>
                 </button>
-
-                {onSyncCloud && (
-                  <button
-                    type="button"
-                    onClick={handleSyncWithCloud}
-                    disabled={isSyncingCloud}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors disabled:opacity-50"
-                    title="Enviar e atualizar catálogo completo para o Supabase"
-                  >
-                    {isSyncingCloud ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <CloudUpload className="w-3.5 h-3.5" />
-                    )}
-                    <span>{isSyncingCloud ? 'A sincronizar...' : 'Enviar para Supabase'}</span>
-                  </button>
-                )}
-
-                {onPullCloud && (
-                  <button
-                    type="button"
-                    onClick={handlePullFromCloud}
-                    disabled={isSyncingCloud}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-stone-100 border border-stone-300 text-stone-700 rounded-lg text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50"
-                    title="Descarregar catálogo existente no Supabase"
-                  >
-                    <CloudDownload className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Puxar da Nuvem</span>
-                  </button>
-                )}
               </div>
             </div>
 
@@ -730,12 +764,440 @@ export const AdminCatalogModal: React.FC<AdminCatalogModalProps> = ({
               </div>
             )}
           </div>
+          </>
+          )}
+
+          {/* TAB: DESTAQUES & INFORMAÇÕES */}
+          {activeTab === 'featured' && (
+            <div className="flex-1 overflow-y-auto bg-stone-100/60 p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-sm">
+                <div>
+                  <h3 className="text-base font-extrabold text-stone-900 font-['Outfit'] flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500 fill-current" />
+                    Gestão de Informações & Destaques da Campanha
+                  </h3>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    {featuredItems.length} registo(s) no total •{' '}
+                    {featuredItems.filter((i) => i.isActive).length} ativo(s) em destaque na página inicial.
+                  </p>
+                </div>
+                {onAddNewFeaturedInfo && (
+                  <button
+                    type="button"
+                    id="admin-add-featured-info-btn"
+                    onClick={onAddNewFeaturedInfo}
+                    className="inline-flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-300 text-stone-950 px-4 py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Adicionar Informação ao Destaque</span>
+                  </button>
+                )}
+              </div>
+
+              {featuredItems.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-10 text-center">
+                  <Megaphone className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+                  <h4 className="text-sm font-bold text-stone-800 mb-1">
+                    Nenhuma Informação Registada
+                  </h4>
+                  <p className="text-xs text-stone-500 max-w-md mx-auto mb-4">
+                    Adicione comunicados oficiais, chegadas de lotes de sementes ou promoções para publicar no topo da página.
+                  </p>
+                  {onAddNewFeaturedInfo && (
+                    <button
+                      type="button"
+                      onClick={onAddNewFeaturedInfo}
+                      className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Adicionar Primeira Informação</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {featuredItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`bg-white rounded-2xl border p-4 shadow-sm flex flex-col justify-between gap-3 ${
+                        item.isActive ? 'border-emerald-300' : 'border-stone-200 opacity-80'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {item.imageUrl && (
+                          <img
+                            src={item.imageUrl}
+                            alt={item.title}
+                            className="w-20 h-20 rounded-xl object-contain bg-stone-100 border border-stone-200 shrink-0"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                                item.isActive
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-stone-100 text-stone-600'
+                              }`}
+                            >
+                              {item.isActive ? '✓ Ativo no Destaque' : 'Oculto'}
+                            </span>
+                            {item.badgeText && (
+                              <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md">
+                                {item.badgeText}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="font-bold text-sm text-stone-900 leading-snug">
+                            {item.title}
+                          </h4>
+                          <p className="text-xs text-stone-600 line-clamp-2">
+                            {item.summary}
+                          </p>
+                          {item.dateText && (
+                            <div className="text-[11px] text-stone-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>{item.dateText}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2.5 border-t border-stone-100">
+                        {onToggleFeaturedInfoActive && (
+                          <button
+                            type="button"
+                            onClick={() => onToggleFeaturedInfoActive(item.id)}
+                            className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                              item.isActive
+                                ? 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                                : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                            }`}
+                          >
+                            {item.isActive ? (
+                              <>
+                                <EyeOff className="w-3.5 h-3.5" />
+                                <span>Ocultar</span>
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Ativar no Destaque</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                        {onEditFeaturedInfo && (
+                          <button
+                            type="button"
+                            onClick={() => onEditFeaturedInfo(item)}
+                            className="py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Editar</span>
+                          </button>
+                        )}
+                        {onDeleteFeaturedInfo && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteFeaturedInfo(item.id)}
+                            className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 cursor-pointer"
+                            title="Eliminar informação"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: HISTÓRICO DE ORÇAMENTOS & MENSAGENS */}
+          {activeTab === 'history' && (
+            <div className="flex-1 overflow-y-auto bg-stone-100/60 p-6 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-stone-200 shadow-sm">
+                <div>
+                  <h3 className="text-base font-extrabold text-stone-900 font-['Outfit']">
+                    Histórico Local de Orçamentos, Carrinhos & Mensagens
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Todos os pedidos enviados pelo website ficam registados localmente neste navegador.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {(['all', 'pending', 'resolved'] as const).map((statusKey) => (
+                    <button
+                      key={statusKey}
+                      type="button"
+                      onClick={() => setHistoryFilter(statusKey)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
+                        historyFilter === statusKey
+                          ? 'bg-emerald-800 text-white'
+                          : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                      }`}
+                    >
+                      {statusKey === 'all' ? 'Todos' : statusKey === 'pending' ? 'Pendentes' : 'Atendidos'}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleExportHistoryJSON}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Exportar Histórico</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Quotes & Orders */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-stone-600">
+                  Pedidos de Orçamento & Listas de Pedido ({quotesHistory.length})
+                </h4>
+                {quotesHistory.filter((q) => historyFilter === 'all' || (historyFilter === 'resolved' ? q.status === 'resolved' : q.status !== 'resolved')).length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center text-xs text-stone-500">
+                    Nenhum pedido de orçamento encontrado neste filtro.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {quotesHistory
+                      .filter((q) => historyFilter === 'all' || (historyFilter === 'resolved' ? q.status === 'resolved' : q.status !== 'resolved'))
+                      .map((q) => {
+                        const isResolved = q.status === 'resolved';
+                        const replyText = encodeURIComponent(
+                          `Olá ${q.name}, recebemos o seu pedido (${q.selectedProduct || q.selectedCategory}) na Raffa Aliados do Campo. Estamos a preparar o atendimento!`
+                        );
+                        return (
+                          <div key={q.id} className="bg-white rounded-2xl border border-stone-200 p-4 shadow-sm flex flex-col justify-between gap-3">
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${isResolved ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                                  {isResolved ? 'Atendido' : 'Pendente'}
+                                </span>
+                                <span className="text-[11px] text-stone-400 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(q.createdAt).toLocaleString('pt-MZ')}
+                                </span>
+                              </div>
+                              <div>
+                                <div className="font-bold text-sm text-stone-900">{q.name || 'Cliente'}</div>
+                                <div className="text-xs text-stone-600 flex flex-wrap items-center gap-3 mt-0.5">
+                                  <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-emerald-700" /> {q.phone || 'S/N'}</span>
+                                  <span className="flex items-center gap-1"><MapPin className="w-3 h-3 text-amber-600" /> {q.location || 'Ribaué'}</span>
+                                </div>
+                              </div>
+                              <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-100 text-xs text-stone-700 space-y-1">
+                                <div><strong>Categoria:</strong> {q.selectedCategory}</div>
+                                <div><strong>Produtos:</strong> {q.selectedProduct || 'Geral'}</div>
+                                <div><strong>Qtd/Área:</strong> {q.areaOrQuantity || 'A definir'}</div>
+                                {q.totalMzn && q.totalMzn > 0 && (
+                                  <div className="text-emerald-800 font-bold">Total Estimado: {formatMzn(q.totalMzn)} MZN</div>
+                                )}
+                                {q.notes && <div className="italic text-stone-500">"{q.notes}"</div>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 pt-2 border-t border-stone-100">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleQuoteStatus(q)}
+                                className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer ${
+                                  isResolved ? 'bg-stone-100 text-stone-700 hover:bg-stone-200' : 'bg-emerald-700 text-white hover:bg-emerald-800'
+                                }`}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>{isResolved ? 'Reabrir' : 'Marcar Atendido'}</span>
+                              </button>
+                              {q.phone && (
+                                <a
+                                  href={`https://wa.me/${q.phone.replace(/\D/g, '').startsWith('258') ? q.phone.replace(/\D/g, '') : `258${q.phone.replace(/\D/g, '')}`}?text=${replyText}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-1"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  <span>Responder</span>
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteQuote(q.id)}
+                                className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 cursor-pointer"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Contact Messages */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-stone-600">
+                  Mensagens Rápidas Recebidas ({contactsHistory.length})
+                </h4>
+                {contactsHistory.filter((c) => historyFilter === 'all' || (historyFilter === 'resolved' ? c.status === 'resolved' : c.status !== 'resolved')).length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-8 text-center text-xs text-stone-500">
+                    Nenhuma mensagem registada neste filtro.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {contactsHistory
+                      .filter((c) => historyFilter === 'all' || (historyFilter === 'resolved' ? c.status === 'resolved' : c.status !== 'resolved'))
+                      .map((c) => {
+                        const isResolved = c.status === 'resolved';
+                        return (
+                          <div key={c.id} className="bg-white rounded-2xl border border-stone-200 p-4 shadow-sm flex flex-col justify-between gap-3">
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${isResolved ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                                  {isResolved ? 'Atendida' : 'Nova Mensagem'}
+                                </span>
+                                <span className="text-[11px] text-stone-400">
+                                  {new Date(c.createdAt).toLocaleString('pt-MZ')}
+                                </span>
+                              </div>
+                              <div className="font-bold text-sm text-stone-900">{c.name}</div>
+                              <div className="text-xs text-stone-600 flex flex-wrap gap-3">
+                                {c.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-emerald-700" /> {c.phone}</span>}
+                                {c.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-amber-600" /> {c.email}</span>}
+                              </div>
+                              <p className="text-xs text-stone-700 bg-stone-50 p-2.5 rounded-xl border border-stone-100">
+                                {c.message}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 pt-2 border-t border-stone-100">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleContactStatus(c)}
+                                className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer ${
+                                  isResolved ? 'bg-stone-100 text-stone-700 hover:bg-stone-200' : 'bg-emerald-700 text-white hover:bg-emerald-800'
+                                }`}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>{isResolved ? 'Reabrir' : 'Marcar Atendida'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteContact(c.id)}
+                                className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 cursor-pointer"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: SEGURANÇA (ALTERAR PIN DE ADMINISTRAÇÃO) */}
+          {activeTab === 'security' && (
+            <div className="flex-1 overflow-y-auto bg-stone-100/60 p-6 flex items-start justify-center">
+              <div className="bg-white rounded-3xl border border-stone-200 shadow-sm max-w-md w-full p-6 sm:p-8 space-y-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-extrabold text-stone-900 font-['Outfit']">
+                      Alterar Código PIN de Acesso
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      Personalize o PIN de 4 dígitos usado para gerir produtos e o logótipo.
+                    </p>
+                  </div>
+                </div>
+
+                {pinFeedback && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold border ${
+                      pinFeedback.type === 'success'
+                        ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                        : 'bg-red-50 text-red-800 border-red-200'
+                    }`}
+                  >
+                    {pinFeedback.text}
+                  </div>
+                )}
+
+                <form onSubmit={handlePinChangeSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
+                      PIN Atual (4 dígitos)
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      required
+                      placeholder="••••"
+                      value={oldPinInput}
+                      onChange={(e) => setOldPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-emerald-600 outline-none text-sm font-mono tracking-widest"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
+                      Novo PIN (4 dígitos)
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      required
+                      placeholder="••••"
+                      value={newPinInput}
+                      onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-emerald-600 outline-none text-sm font-mono tracking-widest"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
+                      Confirmar Novo PIN
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      required
+                      placeholder="••••"
+                      value={confirmPinInput}
+                      onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-emerald-600 outline-none text-sm font-mono tracking-widest"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-sm shadow-md transition-all cursor-pointer"
+                  >
+                    Guardar Novo PIN
+                  </button>
+                </form>
+
+                <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-[11px] text-stone-600 leading-relaxed">
+                  <strong>Nota:</strong> O novo PIN fica guardado localmente neste dispositivo/navegador em armazenamento persistente ({COMPANY_INFO.name}).
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Footer */}
           <div className="bg-stone-50 px-6 py-3.5 border-t border-stone-200 flex items-center justify-between text-xs text-stone-500 shrink-0">
             <div className="flex items-center gap-1.5">
               <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Ao eliminar produtos, eles são apagados na totalidade de todas as bases de dados.</span>
+              <span>Armazenamento local ilimitado (IndexedDB): todas as adições e eliminações permanecem guardadas permanentemente.</span>
             </div>
             <button
               onClick={onClose}

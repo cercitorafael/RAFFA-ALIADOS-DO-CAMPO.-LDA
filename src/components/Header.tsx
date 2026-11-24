@@ -9,21 +9,27 @@ import {
   ShieldCheck,
   ChevronRight,
   Settings2,
-  Plus
+  Plus,
+  ShoppingCart
 } from 'lucide-react';
 import { COMPANY_INFO } from '../data/agroData';
 import { RaffaLogo } from './RaffaLogo';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   onOpenQuote: (productName?: string) => void;
   onOpenAdminCatalog: () => void;
   onAddNewProduct: () => void;
+  onOpenCart?: () => void;
+  cartItemCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
   onOpenQuote,
   onOpenAdminCatalog,
-  onAddNewProduct
+  onAddNewProduct,
+  onOpenCart,
+  cartItemCount = 0,
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -44,9 +50,9 @@ export const Header: React.FC<HeaderProps> = ({
     { label: 'Início', href: '#inicio' },
     { label: 'Destaques', href: '#informacoes-destaque' },
     { label: 'Serviços', href: '#servicos' },
-    { label: 'Sementes & Produtos', href: '#produtos' },
+    { label: 'Produtos', href: '#produtos' },
     { label: 'Calculadora', href: '#calculadora' },
-    { label: 'Quem Somos', href: '#quem-somos' },
+    { label: 'Calendário', href: '#calendario' },
     { label: 'Contacto', href: '#contacto' },
   ];
 
@@ -117,10 +123,28 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Buttons */}
           <div className="hidden sm:flex items-center gap-2.5">
+            <PWAInstallButton />
+            {onOpenCart && (
+              <button
+                id="header-cart-btn"
+                type="button"
+                onClick={onOpenCart}
+                className="relative inline-flex items-center gap-1.5 bg-amber-100 hover:bg-amber-200 text-stone-900 font-bold text-xs px-3 py-2.5 rounded-lg border border-amber-300 transition-all cursor-pointer"
+                title="Abrir Minha Lista de Pedido"
+              >
+                <ShoppingCart className="w-4 h-4 text-amber-800" />
+                <span className="hidden md:inline">Lista</span>
+                {cartItemCount > 0 && (
+                  <span className="bg-emerald-700 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                    {cartItemCount}
+                  </span>
+                )}
+              </button>
+            )}
             <button
               id="header-quote-btn"
               onClick={() => onOpenQuote()}
-              className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
+              className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
             >
               <span>Solicitar Orçamento</span>
               <ChevronRight className="w-4 h-4" />
@@ -129,6 +153,22 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Mobile Menu Button */}
           <div className="flex items-center gap-2 lg:hidden">
+            {onOpenCart && (
+              <button
+                id="mobile-cart-btn"
+                type="button"
+                onClick={onOpenCart}
+                className="relative sm:hidden inline-flex items-center gap-1 bg-amber-100 text-stone-900 font-bold text-xs px-2.5 py-1.5 rounded-md border border-amber-300"
+                aria-label="Lista de Pedido"
+              >
+                <ShoppingCart className="w-4 h-4 text-amber-800" />
+                {cartItemCount > 0 && (
+                  <span className="bg-emerald-700 text-white text-[10px] font-black px-1.5 rounded-full">
+                    {cartItemCount}
+                  </span>
+                )}
+              </button>
+            )}
             <button
               id="mobile-quote-quick-btn"
               onClick={() => onOpenQuote()}
@@ -164,6 +204,7 @@ export const Header: React.FC<HeaderProps> = ({
               </a>
             ))}
             <div className="pt-3 border-t border-stone-100 flex flex-col gap-2.5">
+              <PWAInstallButton compact={true} />
               <button
                 id="drawer-quote-btn"
                 onClick={() => {

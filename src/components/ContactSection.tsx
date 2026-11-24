@@ -14,7 +14,8 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { COMPANY_INFO } from '../data/agroData';
-import { submitContactToCloud } from '../lib/supabase';
+import { saveContactToLocalDB } from '../utils/persistentDB';
+import { StoreMap } from './StoreMap';
 
 interface ContactSectionProps {
   onOpenQuote: () => void;
@@ -30,12 +31,11 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onOpenQuote }) =
 
   const handleQuickSend = (e: React.FormEvent) => {
     e.preventDefault();
-    // Asynchronously record message in Supabase cloud
-    submitContactToCloud({
+    void saveContactToLocalDB({
       name: quickMsg.name || 'Cliente Website',
       phone: quickMsg.phone,
       message: quickMsg.message,
-    }).catch(err => console.warn('[Supabase] Could not log message:', err));
+    });
 
     const text = encodeURIComponent(
       `Olá Raffa Aliados do Campo, meu nome é ${quickMsg.name || 'Cliente'} (${quickMsg.phone || 'S/N'}).\n\nMensagem: ${quickMsg.message}`
@@ -83,7 +83,7 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onOpenQuote }) =
         </div>
 
         {/* 4 Direct Contact Cards matching user HTML */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-14">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
           
           {/* Card 1: WhatsApp */}
           <a
@@ -172,6 +172,11 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onOpenQuote }) =
             </div>
           </div>
 
+        </div>
+
+        {/* Interactive Store Location Map */}
+        <div className="mb-14">
+          <StoreMap />
         </div>
 
         {/* 2-Column: Quick Message Form & FAQs */}

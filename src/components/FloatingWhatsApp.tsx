@@ -27,7 +27,7 @@ export const FloatingWhatsApp: React.FC = () => {
         href={`https://wa.me/258${COMPANY_INFO.whatsapp}?text=Olá%20Raffa%20Aliados%20do%20Campo,%20gostaria%20de%20consultar%20preços%20e%20disponibilidade`}
         target="_blank"
         rel="noopener noreferrer"
-        className="w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-2xl shadow-emerald-950/40 hover:scale-110 active:scale-95 transition-all duration-300 ring-4 ring-white"
+        className="relative w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-300 border-4 border-white"
         aria-label="Contactar Raffa Aliados do Campo pelo WhatsApp"
       >
         <MessageCircle className="w-7 h-7 fill-white/20" />
